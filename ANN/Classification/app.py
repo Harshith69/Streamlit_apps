@@ -287,9 +287,12 @@ if model is not None and scaler is not None:
                 gender_encoded = label_encoder_gender.transform([gender])[0]
                 geo_encoded = onehot_encoder_geo.transform([[geography]]).toarray()
                 
-                # Create input data
+                # Based on the error, the scaler expects 'Exited' column but not 'EstimatedSalary'
                 input_data = pd.DataFrame({
                     'CreditScore': [credit_score],
+                    'Geography_France': [geo_encoded[0][0]],
+                    'Geography_Germany': [geo_encoded[0][1]],
+                    'Geography_Spain': [geo_encoded[0][2]],
                     'Gender': [gender_encoded],
                     'Age': [age],
                     'Tenure': [tenure],
@@ -297,10 +300,7 @@ if model is not None and scaler is not None:
                     'NumOfProducts': [num_of_products],
                     'HasCrCard': [has_cr_card],
                     'IsActiveMember': [is_active_member],
-                    'EstimatedSalary': [estimated_salary],
-                    'Geography_France': [geo_encoded[0][0]],
-                    'Geography_Germany': [geo_encoded[0][1]],
-                    'Geography_Spain': [geo_encoded[0][2]]
+                    'Exited': [0]  # Add this column that the scaler expects
                 })
                 
                 try:
@@ -337,11 +337,8 @@ if model is not None and scaler is not None:
                         """, unsafe_allow_html=True)
                         
                 except Exception as e:
-                    st.error(f"❌ Error during prediction: {e}")
-                    # More specific error handling
-                    if "feature names" in str(e).lower():
-                        st.info("🔧 Column mismatch detected. Trying alternative column order...")
-                        # You can add alternative column ordering here if needed
+                    st.error(f"❌ Error: {e}")
+                    st.info("The model was trained with different features. Please check your training data format.")
 
 else:
     st.error("""
@@ -409,3 +406,4 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
+
