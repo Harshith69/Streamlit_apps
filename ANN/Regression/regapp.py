@@ -238,12 +238,25 @@ st.markdown("""
         0% { transform: translate(0, 0); }
         100% { transform: translate(24px, 0); }
     }
+    
+    /* Sidebar styling */
+    .sidebar-content {
+        background: rgba(255,255,255,0.1);
+        backdrop-filter: blur(15px);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    .sidebar-header {
+        color: #4ECDC4;
+        font-size: 1.4rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
-
-# Load model and preprocessing objects
-import os
-from pathlib import Path
 
 # Load model and preprocessing objects
 @st.cache_resource
@@ -257,10 +270,6 @@ def load_artifacts():
         scaler_path = current_dir / 'scaler.pkl'
         gender_encoder_path = current_dir / 'label_encoder_gender.pkl'
         geo_encoder_path = current_dir / 'onehot_encoder_geo.pkl'
-        
-        # Debug: Show current directory and files
-        st.sidebar.write(f"Current directory: {current_dir}")
-        st.sidebar.write(f"Files in directory: {[f for f in current_dir.iterdir() if f.is_file()]}")
         
         # Check if files exist
         if not model_path.exists():
@@ -284,7 +293,6 @@ def load_artifacts():
         with open(geo_encoder_path, 'rb') as f:
             onehot_encoder_geo = pickle.load(f)
         
-        st.sidebar.success(" All model files loaded successfully!")
         return model, scaler, label_encoder_gender, onehot_encoder_geo
         
     except Exception as e:
@@ -304,8 +312,68 @@ def loading_animation():
     </div>
     """, unsafe_allow_html=True)
 
+# Sidebar content
+def sidebar_content():
+    st.sidebar.markdown("""
+    <div style='text-align: center; margin-bottom: 2rem;'>
+        <h2 style='color: #FF6B6B; margin-bottom: 0.5rem;'>💰 Salary Predictor Pro</h2>
+        <p style='color: white;'>AI-Powered Salary Estimation</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # About the Dashboard
+    st.sidebar.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sidebar-header">📊 About the Dashboard</div>', unsafe_allow_html=True)
+    st.sidebar.markdown("""
+    This interactive dashboard provides AI-powered salary predictions based on customer profile data. 
+    
+    **Key Features:**
+    - Real-time salary predictions
+    - Feature impact visualization
+    - Interactive analytics
+    - Professional insights
+    """)
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+    
+    # Model Information
+    st.sidebar.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sidebar-header">🤖 Model Information</div>', unsafe_allow_html=True)
+    st.sidebar.markdown("""
+    **Technology Stack:**
+    - TensorFlow/Keras Neural Network
+    - Scikit-learn preprocessing
+    - Streamlit for interface
+    - Plotly for visualizations
+    
+    **Model Type:** Regression
+    **Input Features:** 12 parameters
+    **Output:** Annual salary prediction
+    """)
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+    
+    # How to Use
+    st.sidebar.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sidebar-header">🚀 How to Use</div>', unsafe_allow_html=True)
+    st.sidebar.markdown("""
+    **Step-by-Step Guide:**
+    1. Fill in customer details in the left panel
+    2. Navigate between Personal Info and Financial Details tabs
+    3. Click the 'Predict Salary' button
+    4. View prediction results and insights
+    5. Analyze feature impacts
+    
+    **Tips:**
+    - Use sliders for quick adjustments
+    - Check both tabs for complete information
+    - Review the feature impact chart
+    """)
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
 # Main app
 def main():
+    # Display sidebar content
+    sidebar_content()
+    
     # Header with enhanced styling
     st.markdown('<h1 class="main-header">💰 Salary Predictor Pro</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">AI-Powered Salary Estimation Platform with Advanced Analytics</p>', unsafe_allow_html=True)
@@ -560,7 +628,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()
-
-
