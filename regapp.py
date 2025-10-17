@@ -255,7 +255,7 @@ def main():
                     </a>
                 </p>
                 <p style='font-size: 0.9rem; color: #888;'>
-                    Powered by TensorFlow & Streamlit | Built with ❤️ for Salary Prediction
+                    Powered by TensorFlow & Streamlit
                 </p>
             </div>
             """, 
@@ -266,3 +266,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
