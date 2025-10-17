@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 import pandas as pd
 import pickle
 import time
+import os
 
 # ------------------ Page Configuration ------------------
 st.set_page_config(
@@ -149,19 +150,41 @@ st.markdown("""
 @st.cache_resource
 def load_model_and_encoders():
     try:
-        model = tf.keras.models.load_model('model.h5')
-        with open('label_encoder_gender.pkl', 'rb') as file:
+        # Define file paths - adjust these according to your file structure
+        base_path = "."  # Current directory
+        
+        model_path = os.path.join(base_path, 'model.h5')
+        label_encoder_path = os.path.join(base_path, 'label_encoder_gender.pkl')
+        onehot_encoder_path = os.path.join(base_path, 'onehot_encoder_geo.pkl')
+        scaler_path = os.path.join(base_path, 'scaler.pkl')
+        
+        # Check if files exist
+        if not all(os.path.exists(path) for path in [model_path, label_encoder_path, onehot_encoder_path, scaler_path]):
+            st.error("❌ Some model files are missing!")
+            st.info(f"Current directory: {os.getcwd()}")
+            st.info(f"Looking for files in: {base_path}")
+            return None, None, None, None
+        
+        # Load files
+        model = tf.keras.models.load_model(model_path)
+        
+        with open(label_encoder_path, 'rb') as file:
             label_encoder_gender = pickle.load(file)
-        with open('onehot_encoder_geo.pkl', 'rb') as file:
+
+        with open(onehot_encoder_path, 'rb') as file:
             onehot_encoder_geo = pickle.load(file)
-        with open('scaler.pkl', 'rb') as file:
+
+        with open(scaler_path, 'rb') as file:
             scaler = pickle.load(file)
+            
         return model, label_encoder_gender, onehot_encoder_geo, scaler
+        
     except Exception as e:
-        st.error(f"Error loading model or encoders: {e}")
+        st.error(f"❌ Error loading model or encoders: {e}")
         return None, None, None, None
 
 model, label_encoder_gender, onehot_encoder_geo, scaler = load_model_and_encoders()
+
 
 # ------------------ Header Section ------------------
 st.markdown("""
@@ -361,3 +384,4 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
+
