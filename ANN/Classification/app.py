@@ -74,14 +74,14 @@ st.markdown("""
         background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
         padding: 2rem;
         border-radius: 15px;
-        color: white;
+        color: black;
         margin: 1rem 0;
         box-shadow: 0 8px 25px rgba(116,185,255,0.3);
         border: none;
     }
     
     .input-section h3 {
-        color: white;
+        color: black;
         margin-bottom: 1.5rem;
         text-align: center;
     }
@@ -443,3 +443,4 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
+
