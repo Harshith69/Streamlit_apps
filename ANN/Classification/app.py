@@ -147,12 +147,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------ Load model and encoders ------------------
-# ------------------ Load model and encoders ------------------
 @st.cache_resource
 def load_model_and_encoders():
     try:
-        # Update the base path to where your files are located
-        base_path = "ANN/Classification"  # Changed to your folder path
+        base_path = "ANN/Classification"
         
         model_path = os.path.join(base_path, 'model.h5')
         label_encoder_path = os.path.join(base_path, 'label_encoder_gender.pkl')
@@ -160,8 +158,6 @@ def load_model_and_encoders():
         scaler_path = os.path.join(base_path, 'scaler.pkl')
         
         # Check if files exist
-        st.write(f"🔍 Looking for files in: {base_path}")
-        
         if not all(os.path.exists(path) for path in [model_path, label_encoder_path, onehot_encoder_path, scaler_path]):
             st.error("❌ Some model files are missing!")
             st.info(f"Current directory: {os.getcwd()}")
@@ -179,7 +175,6 @@ def load_model_and_encoders():
             return None, None, None, None
         
         # Load files
-        st.info("🔄 Loading model files...")
         model = tf.keras.models.load_model(model_path)
         
         with open(label_encoder_path, 'rb') as file:
@@ -209,7 +204,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------ Main Content ------------------
-if model is not None:
+if model is not None and scaler is not None:
+    # Debug info in sidebar
+    with st.sidebar:
+        st.markdown("### 🔧 Model Info")
+        try:
+            if hasattr(scaler, 'feature_names_in_'):
+                st.write("Scaler expects:", list(scaler.feature_names_in_))
+        except:
+            st.write("Scaler feature names not available")
+    
     col1, col2 = st.columns([1, 1])
     
     with col1:
@@ -274,19 +278,16 @@ if model is not None:
         
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # Prediction Button with animation
+        # Prediction Button
         if st.button('🚀 Predict Churn Probability', use_container_width=True):
             with st.spinner('🔮 Analyzing customer data...'):
-                time.sleep(1)  # Simulate processing time for better UX
+                time.sleep(1)
                 
                 # ------------------ Data Preparation ------------------
                 gender_encoded = label_encoder_gender.transform([gender])[0]
                 geo_encoded = onehot_encoder_geo.transform([[geography]]).toarray()
-                geo_encoded_df = pd.DataFrame(
-                    geo_encoded,
-                    columns=onehot_encoder_geo.get_feature_names_out(['Geography'])
-                )
                 
+                # Create input data
                 input_data = pd.DataFrame({
                     'CreditScore': [credit_score],
                     'Gender': [gender_encoded],
@@ -296,45 +297,55 @@ if model is not None:
                     'NumOfProducts': [num_of_products],
                     'HasCrCard': [has_cr_card],
                     'IsActiveMember': [is_active_member],
-                    'EstimatedSalary': [estimated_salary]
+                    'EstimatedSalary': [estimated_salary],
+                    'Geography_France': [geo_encoded[0][0]],
+                    'Geography_Germany': [geo_encoded[0][1]],
+                    'Geography_Spain': [geo_encoded[0][2]]
                 })
                 
-                input_data = pd.concat([input_data.reset_index(drop=True), geo_encoded_df], axis=1)
-                input_data_scaled = scaler.transform(input_data)
-                
-                # ------------------ Prediction ------------------
-                prediction = model.predict(input_data_scaled)
-                prediction_proba = float(prediction[0][0])
-                
-                # Display prediction with animation
-                st.markdown(f"""
-                <div class='progress-bar'>
-                    <div class='progress-fill' style='width: {prediction_proba * 100}%'></div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.metric("Churn Probability", f"{prediction_proba:.2%}")
-                
-                if prediction_proba > 0.5:
+                try:
+                    input_data_scaled = scaler.transform(input_data)
+                    
+                    # ------------------ Prediction ------------------
+                    prediction = model.predict(input_data_scaled)
+                    prediction_proba = float(prediction[0][0])
+                    
+                    # Display prediction with animation
                     st.markdown(f"""
-                    <div class='prediction-card'>
-                        <h2>🚨 High Churn Risk Detected!</h2>
-                        <p>This customer has a <strong>{prediction_proba:.2%}</strong> probability of churning.</p>
-                        <p>💡 Recommendation: Immediate retention actions needed!</p>
+                    <div class='progress-bar'>
+                        <div class='progress-fill' style='width: {prediction_proba * 100}%'></div>
                     </div>
                     """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                    <div class='safe-card'>
-                        <h2>✅ Low Churn Risk</h2>
-                        <p>This customer has a <strong>{prediction_proba:.2%}</strong> probability of churning.</p>
-                        <p>🎉 Great! Customer is likely to stay with us.</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    
+                    st.metric("Churn Probability", f"{prediction_proba:.2%}")
+                    
+                    if prediction_proba > 0.5:
+                        st.markdown(f"""
+                        <div class='prediction-card'>
+                            <h2>🚨 High Churn Risk Detected!</h2>
+                            <p>This customer has a <strong>{prediction_proba:.2%}</strong> probability of churning.</p>
+                            <p>💡 Recommendation: Immediate retention actions needed!</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class='safe-card'>
+                            <h2>✅ Low Churn Risk</h2>
+                            <p>This customer has a <strong>{prediction_proba:.2%}</strong> probability of churning.</p>
+                            <p>🎉 Great! Customer is likely to stay with us.</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                except Exception as e:
+                    st.error(f"❌ Error during prediction: {e}")
+                    # More specific error handling
+                    if "feature names" in str(e).lower():
+                        st.info("🔧 Column mismatch detected. Trying alternative column order...")
+                        # You can add alternative column ordering here if needed
 
 else:
     st.error("""
-    ❌ Unable to load the model and encoders. Please ensure the following files are present:
+    ❌ Unable to load the model and encoders. Please ensure the following files are present in ANN/Classification/:
     - model.h5
     - label_encoder_gender.pkl
     - onehot_encoder_geo.pkl
@@ -398,5 +409,3 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
-
-
