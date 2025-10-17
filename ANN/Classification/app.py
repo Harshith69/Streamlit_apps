@@ -74,16 +74,17 @@ st.markdown("""
         background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
         padding: 2rem;
         border-radius: 15px;
-        color: black;
+        color: black !important;
         margin: 1rem 0;
         box-shadow: 0 8px 25px rgba(116,185,255,0.3);
         border: none;
     }
     
     .input-section h3 {
-        color: black;
+        color: black !important;
         margin-bottom: 1.5rem;
         text-align: center;
+        font-weight: bold;
     }
     
     .insights-section {
@@ -117,8 +118,19 @@ st.markdown("""
         background: white;
     }
     
-    .stNumberInput label, .stSelectbox label, .stSlider label {
-        color: white !important;
+    /* CHANGE THIS - Make all labels black */
+    .stSelectbox label, 
+    .stNumberInput label,
+    .stSlider label {
+        color: black !important;
+        font-weight: 600;
+    }
+    
+    /* More specific targeting for labels */
+    div[data-testid="stSelectbox"] label, 
+    div[data-testid="stNumberInput"] label,
+    div[data-testid="stSlider"] label {
+        color: black !important;
         font-weight: 600;
     }
     
@@ -443,4 +455,3 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
-
