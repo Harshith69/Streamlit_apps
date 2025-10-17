@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
+import os
+from pathlib import Path
 from tensorflow.keras.models import load_model
 import plotly.graph_objects as go
 import plotly.express as px
@@ -240,16 +242,54 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Load model and preprocessing objects
+import os
+from pathlib import Path
+
+# Load model and preprocessing objects
 @st.cache_resource
 def load_artifacts():
-    model = load_model('regression_model.h5')
-    with open('scaler.pkl', 'rb') as f:
-        scaler = pickle.load(f)
-    with open('label_encoder_gender.pkl', 'rb') as f:
-        label_encoder_gender = pickle.load(f)
-    with open('onehot_encoder_geo.pkl', 'rb') as f:
-        onehot_encoder_geo = pickle.load(f)
-    return model, scaler, label_encoder_gender, onehot_encoder_geo
+    try:
+        # Get the directory where the current script is located
+        current_dir = Path(__file__).parent
+        
+        # Define all file paths
+        model_path = current_dir / 'regression_model.h5'
+        scaler_path = current_dir / 'scaler.pkl'
+        gender_encoder_path = current_dir / 'label_encoder_gender.pkl'
+        geo_encoder_path = current_dir / 'onehot_encoder_geo.pkl'
+        
+        # Debug: Show current directory and files
+        st.sidebar.write(f"Current directory: {current_dir}")
+        st.sidebar.write(f"Files in directory: {[f for f in current_dir.iterdir() if f.is_file()]}")
+        
+        # Check if files exist
+        if not model_path.exists():
+            st.error(f"Model file not found at: {model_path}")
+            st.error(f"Please ensure 'regression_model.h5' is in the same folder as your script")
+            return None, None, None, None
+            
+        if not scaler_path.exists():
+            st.error(f"Scaler file not found at: {scaler_path}")
+            return None, None, None, None
+            
+        # Load files
+        model = load_model(model_path)
+        
+        with open(scaler_path, 'rb') as f:
+            scaler = pickle.load(f)
+            
+        with open(gender_encoder_path, 'rb') as f:
+            label_encoder_gender = pickle.load(f)
+            
+        with open(geo_encoder_path, 'rb') as f:
+            onehot_encoder_geo = pickle.load(f)
+        
+        st.sidebar.success(" All model files loaded successfully!")
+        return model, scaler, label_encoder_gender, onehot_encoder_geo
+        
+    except Exception as e:
+        st.error(f"Error loading model artifacts: {e}")
+        return None, None, None, None
 
 # Loading animation component
 def loading_animation():
@@ -270,11 +310,25 @@ def main():
     st.markdown('<h1 class="main-header">💰 Salary Predictor Pro</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">AI-Powered Salary Estimation Platform with Advanced Analytics</p>', unsafe_allow_html=True)
     
-    try:
-        model, scaler, label_encoder_gender, onehot_encoder_geo = load_artifacts()
-    except Exception as e:
-        st.error(f"Error loading model artifacts: {e}")
+    # Load artifacts with error handling
+    artifacts = load_artifacts()
+    if artifacts[0] is None:
+        st.error("""
+        ❌ Failed to load model files. Please ensure all these files are in the same folder as your script:
+        - regression_model.h5
+        - scaler.pkl  
+        - label_encoder_gender.pkl
+        - onehot_encoder_geo.pkl
+        
+        The app cannot function without these files.
+        """)
+        
+        # Show current working directory for debugging
+        st.info(f"Current working directory: {os.getcwd()}")
+        st.info(f"Script location: {Path(__file__).parent}")
         return
+    
+    model, scaler, label_encoder_gender, onehot_encoder_geo = artifacts
 
     # Create two columns
     col1, col2 = st.columns([1, 1])
@@ -508,4 +562,5 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
