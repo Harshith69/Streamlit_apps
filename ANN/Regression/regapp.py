@@ -240,21 +240,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Load model and preprocessing objects
-import os
-
 @st.cache_resource
 def load_artifacts():
-    base_path = os.path.dirname(ANN/Regression/regapp.py)   # Folder where regapp.py is located
-
-    model = load_model(os.path.join(base_path, 'regression_model.h5'))
-    
-    with open(os.path.join(base_path, 'scaler.pkl'), 'rb') as f:
+    model = load_model('regression_model.h5')
+    with open('scaler.pkl', 'rb') as f:
         scaler = pickle.load(f)
-    with open(os.path.join(base_path, 'label_encoder_gender.pkl'), 'rb') as f:
+    with open('label_encoder_gender.pkl', 'rb') as f:
         label_encoder_gender = pickle.load(f)
-    with open(os.path.join(base_path, 'onehot_encoder_geo.pkl'), 'rb') as f:
+    with open('onehot_encoder_geo.pkl', 'rb') as f:
         onehot_encoder_geo = pickle.load(f)
-
     return model, scaler, label_encoder_gender, onehot_encoder_geo
 
 # Loading animation component
@@ -514,3 +508,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
