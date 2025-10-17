@@ -147,11 +147,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------ Load model and encoders ------------------
+# ------------------ Load model and encoders ------------------
 @st.cache_resource
 def load_model_and_encoders():
     try:
-        # Define file paths - adjust these according to your file structure
-        base_path = "."  # Current directory
+        # Update the base path to where your files are located
+        base_path = "ANN/Classification"  # Changed to your folder path
         
         model_path = os.path.join(base_path, 'model.h5')
         label_encoder_path = os.path.join(base_path, 'label_encoder_gender.pkl')
@@ -159,13 +160,26 @@ def load_model_and_encoders():
         scaler_path = os.path.join(base_path, 'scaler.pkl')
         
         # Check if files exist
+        st.write(f"🔍 Looking for files in: {base_path}")
+        
         if not all(os.path.exists(path) for path in [model_path, label_encoder_path, onehot_encoder_path, scaler_path]):
             st.error("❌ Some model files are missing!")
             st.info(f"Current directory: {os.getcwd()}")
             st.info(f"Looking for files in: {base_path}")
+            
+            # List what files we found
+            st.info("📁 Files found in that directory:")
+            try:
+                files_in_dir = os.listdir(base_path)
+                for file in files_in_dir:
+                    st.write(f"   - {file}")
+            except FileNotFoundError:
+                st.error(f"Directory '{base_path}' not found!")
+            
             return None, None, None, None
         
         # Load files
+        st.info("🔄 Loading model files...")
         model = tf.keras.models.load_model(model_path)
         
         with open(label_encoder_path, 'rb') as file:
@@ -177,6 +191,7 @@ def load_model_and_encoders():
         with open(scaler_path, 'rb') as file:
             scaler = pickle.load(file)
             
+        st.success("✅ All model files loaded successfully!")
         return model, label_encoder_gender, onehot_encoder_geo, scaler
         
     except Exception as e:
@@ -184,7 +199,6 @@ def load_model_and_encoders():
         return None, None, None, None
 
 model, label_encoder_gender, onehot_encoder_geo, scaler = load_model_and_encoders()
-
 
 # ------------------ Header Section ------------------
 st.markdown("""
@@ -384,4 +398,5 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
+
 
