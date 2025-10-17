@@ -71,26 +71,55 @@ st.markdown("""
     }
     
     .input-section {
-        background: rgba(255,255,255,0.1);
+        background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
         padding: 2rem;
         border-radius: 15px;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255,255,255,0.2);
+        color: white;
         margin: 1rem 0;
+        box-shadow: 0 8px 25px rgba(116,185,255,0.3);
+        border: none;
+    }
+    
+    .input-section h3 {
+        color: white;
+        margin-bottom: 1.5rem;
+        text-align: center;
+    }
+    
+    .insights-section {
+        background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        color: white;
+        margin: 1rem 0;
+        box-shadow: 0 8px 25px rgba(162,155,254,0.3);
+    }
+    
+    .insights-section h3 {
+        color: white;
+        margin-bottom: 1.5rem;
+        text-align: center;
     }
     
     .stNumberInput, .stSelectbox, .stSlider {
-        background: rgba(255,255,255,0.9);
+        background: rgba(255,255,255,0.95);
         border-radius: 10px;
         padding: 0.5rem;
         border: none;
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
+        color: #2d3436;
     }
     
     .stNumberInput:focus, .stSelectbox:focus, .stSlider:focus {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        background: white;
+    }
+    
+    .stNumberInput label, .stSelectbox label, .stSlider label {
+        color: white !important;
+        font-weight: 600;
     }
     
     .footer {
@@ -120,13 +149,14 @@ st.markdown("""
     }
     
     .metric-card {
-        background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+        background: rgba(255,255,255,0.2);
         padding: 1.5rem;
         border-radius: 12px;
         color: white;
         text-align: center;
         margin: 0.5rem;
-        box-shadow: 0 6px 20px rgba(116,185,255,0.3);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.3);
     }
     
     .progress-bar {
@@ -142,6 +172,13 @@ st.markdown("""
         background: linear-gradient(90deg, #ff7675, #fd79a8);
         border-radius: 4px;
         transition: width 1s ease-in-out;
+    }
+    
+    /* Hide debug elements */
+    .element-container:has(> .stMarkdown > [data-testid="stMarkdownContainer"] > p:contains("🔍")),
+    .element-container:has(> .stMarkdown > [data-testid="stMarkdownContainer"] > p:contains("📊")),
+    .element-container:has(> .stMarkdown > [data-testid="stMarkdownContainer"] > p:contains("✅")) {
+        display: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -160,18 +197,6 @@ def load_model_and_encoders():
         # Check if files exist
         if not all(os.path.exists(path) for path in [model_path, label_encoder_path, onehot_encoder_path, scaler_path]):
             st.error("❌ Some model files are missing!")
-            st.info(f"Current directory: {os.getcwd()}")
-            st.info(f"Looking for files in: {base_path}")
-            
-            # List what files we found
-            st.info("📁 Files found in that directory:")
-            try:
-                files_in_dir = os.listdir(base_path)
-                for file in files_in_dir:
-                    st.write(f"   - {file}")
-            except FileNotFoundError:
-                st.error(f"Directory '{base_path}' not found!")
-            
             return None, None, None, None
         
         # Load files
@@ -186,7 +211,6 @@ def load_model_and_encoders():
         with open(scaler_path, 'rb') as file:
             scaler = pickle.load(file)
             
-        st.success("✅ All model files loaded successfully!")
         return model, label_encoder_gender, onehot_encoder_geo, scaler
         
     except Exception as e:
@@ -205,15 +229,6 @@ st.markdown("""
 
 # ------------------ Main Content ------------------
 if model is not None and scaler is not None:
-    # Debug info in sidebar
-    with st.sidebar:
-        st.markdown("### 🔧 Model Info")
-        try:
-            if hasattr(scaler, 'feature_names_in_'):
-                st.write("Scaler expects:", list(scaler.feature_names_in_))
-        except:
-            st.write("Scaler feature names not available")
-    
     col1, col2 = st.columns([1, 1])
     
     with col1:
@@ -240,7 +255,7 @@ if model is not None and scaler is not None:
         st.markdown("</div>", unsafe_allow_html=True)
     
     with col2:
-        st.markdown("<div class='input-section'>", unsafe_allow_html=True)
+        st.markdown("<div class='insights-section'>", unsafe_allow_html=True)
         st.subheader("📊 Quick Insights")
         
         # Display some metrics
@@ -279,7 +294,7 @@ if model is not None and scaler is not None:
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Prediction Button
-        if st.button('🚀 Predict Churn Probability', use_container_width=True):
+        if st.button('🚀 Predict Churn Probability', use_container_width=True, type="primary"):
             with st.spinner('🔮 Analyzing customer data...'):
                 time.sleep(1)
                 
@@ -307,13 +322,6 @@ if model is not None and scaler is not None:
                 # Create initial dataframe
                 input_data = pd.DataFrame(all_features)
                 
-                # Debug information
-                if hasattr(scaler, 'feature_names_in_'):
-                    st.sidebar.write("🔧 Scaler expects these features in this order:")
-                    st.sidebar.write(list(scaler.feature_names_in_))
-                
-                st.write("🔍 All features we have:", list(input_data.columns))
-                
                 # Reorder columns to EXACTLY match what scaler expects
                 if hasattr(scaler, 'feature_names_in_'):
                     try:
@@ -328,8 +336,6 @@ if model is not None and scaler is not None:
                         
                         # Reorder columns to match scaler's expected order
                         input_data = input_data[expected_columns]
-                        st.write("✅ Columns reordered to match scaler expectations")
-                        st.write("📊 Final column order:", list(input_data.columns))
                         
                     except Exception as reorder_error:
                         st.error(f"❌ Error reordering columns: {reorder_error}")
@@ -337,7 +343,6 @@ if model is not None and scaler is not None:
                 
                 try:
                     input_data_scaled = scaler.transform(input_data)
-                    st.success("✅ Data scaled successfully!")
                     
                     # ------------------ Prediction ------------------
                     prediction = model.predict(input_data_scaled)
@@ -371,13 +376,6 @@ if model is not None and scaler is not None:
                         
                 except Exception as e:
                     st.error(f"❌ Error during prediction: {e}")
-                    
-                    # Show detailed debug info
-                    if hasattr(scaler, 'feature_names_in_'):
-                        st.write("### 🔧 Debug Information:")
-                        st.write("**Scaler expects:**", list(scaler.feature_names_in_))
-                        st.write("**We provided:**", list(input_data.columns))
-                        st.write("**Column match:**", list(input_data.columns) == list(scaler.feature_names_in_))
 
 else:
     st.error("""
@@ -445,5 +443,3 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
-
-
