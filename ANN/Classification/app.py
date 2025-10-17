@@ -287,8 +287,8 @@ if model is not None and scaler is not None:
                 gender_encoded = label_encoder_gender.transform([gender])[0]
                 geo_encoded = onehot_encoder_geo.transform([[geography]]).toarray()
                 
-                # Based on the error, the scaler expects 'Exited' column but not 'EstimatedSalary'
-                input_data = pd.DataFrame({
+                # Create a dictionary with all possible features
+                all_features = {
                     'CreditScore': [credit_score],
                     'Geography_France': [geo_encoded[0][0]],
                     'Geography_Germany': [geo_encoded[0][1]],
@@ -300,11 +300,44 @@ if model is not None and scaler is not None:
                     'NumOfProducts': [num_of_products],
                     'HasCrCard': [has_cr_card],
                     'IsActiveMember': [is_active_member],
-                    'Exited': [0]  # Add this column that the scaler expects
-                })
+                    'EstimatedSalary': [estimated_salary],
+                    'Exited': [0]
+                }
+                
+                # Create initial dataframe
+                input_data = pd.DataFrame(all_features)
+                
+                # Debug information
+                if hasattr(scaler, 'feature_names_in_'):
+                    st.sidebar.write("🔧 Scaler expects these features in this order:")
+                    st.sidebar.write(list(scaler.feature_names_in_))
+                
+                st.write("🔍 All features we have:", list(input_data.columns))
+                
+                # Reorder columns to EXACTLY match what scaler expects
+                if hasattr(scaler, 'feature_names_in_'):
+                    try:
+                        # Get the exact column order from the scaler
+                        expected_columns = list(scaler.feature_names_in_)
+                        
+                        # Check if we have all required columns
+                        missing_columns = set(expected_columns) - set(input_data.columns)
+                        if missing_columns:
+                            st.error(f"❌ Missing columns: {list(missing_columns)}")
+                            st.stop()
+                        
+                        # Reorder columns to match scaler's expected order
+                        input_data = input_data[expected_columns]
+                        st.write("✅ Columns reordered to match scaler expectations")
+                        st.write("📊 Final column order:", list(input_data.columns))
+                        
+                    except Exception as reorder_error:
+                        st.error(f"❌ Error reordering columns: {reorder_error}")
+                        st.stop()
                 
                 try:
                     input_data_scaled = scaler.transform(input_data)
+                    st.success("✅ Data scaled successfully!")
                     
                     # ------------------ Prediction ------------------
                     prediction = model.predict(input_data_scaled)
@@ -337,8 +370,14 @@ if model is not None and scaler is not None:
                         """, unsafe_allow_html=True)
                         
                 except Exception as e:
-                    st.error(f"❌ Error: {e}")
-                    st.info("The model was trained with different features. Please check your training data format.")
+                    st.error(f"❌ Error during prediction: {e}")
+                    
+                    # Show detailed debug info
+                    if hasattr(scaler, 'feature_names_in_'):
+                        st.write("### 🔧 Debug Information:")
+                        st.write("**Scaler expects:**", list(scaler.feature_names_in_))
+                        st.write("**We provided:**", list(input_data.columns))
+                        st.write("**Column match:**", list(input_data.columns) == list(scaler.feature_names_in_))
 
 else:
     st.error("""
@@ -406,4 +445,5 @@ with st.sidebar:
     3. View risk assessment
     4. Take appropriate actions
     """)
+
 
