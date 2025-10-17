@@ -1,1 +1,1 @@
-# Streamlit_apps
+A collection of interactive web applications built with Streamlit, showcasing various Deep Learning models and their real-world applications. This repository also represents my journey in deploying Deep Learning models as interactive web applications. Each app demonstrates a different neural network architecture solving unique business problems.
