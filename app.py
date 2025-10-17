@@ -59,6 +59,10 @@ input_data = pd.DataFrame({
 input_data = pd.concat([input_data.reset_index(drop=True), geo_encoded_df], axis=1)
 
 # Scale the input
+# Ensure input_data columns match scaler's expected columns
+input_data = input_data.reindex(columns=scaler.feature_names_in_, fill_value=0)
+
+# Scale the input
 input_data_scaled = scaler.transform(input_data)
 
 # ------------------ Prediction ------------------
@@ -71,3 +75,4 @@ if prediction_proba > 0.5:
     st.error('🚨 The customer is likely to churn.')
 else:
     st.success('✅ The customer is not likely to churn.')
+
