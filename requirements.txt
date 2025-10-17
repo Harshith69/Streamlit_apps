@@ -6,3 +6,4 @@ tensorboard
 matplotlib
 streamlit
 scikeras
+plotly>=5.15.0
