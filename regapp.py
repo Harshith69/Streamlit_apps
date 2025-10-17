@@ -231,13 +231,38 @@ def main():
                 st.metric("Common Products", "2", "-1")
 
     # Footer
+        # Footer with personal details
     st.markdown("---")
-    st.markdown(
-        "<div style='text-align: center; color: #666;'>"
-        "Powered by TensorFlow & Streamlit | Built with ❤️ for Salary Prediction"
-        "</div>", 
-        unsafe_allow_html=True
-    )
+    
+    # Create columns for footer layout
+    footer_col1, footer_col2, footer_col3 = st.columns([1, 2, 1])
+    
+    with footer_col2:
+        st.markdown(
+            """
+            <div style='text-align: center; color: #666; padding: 2rem;'>
+                <h4 style='color: #4ECDC4; margin-bottom: 1rem;'>👨‍💻 Developed By</h4>
+                <p style='font-size: 1.2rem; font-weight: bold; color: #FF6B6B; margin-bottom: 0.5rem;'>
+                    Harshith Narasimhamurthy
+                </p>
+                <p style='margin-bottom: 0.5rem;'>
+                    📧 harshithnchandan@gmail.com | 📱 +919663918804
+                </p>
+                <p style='margin-bottom: 1rem;'>
+                    🔗 <a href='https://www.linkedin.com/in/harshithnarasimhamurthy69/' target='_blank' 
+                       style='color: #0077B5; text-decoration: none;'>
+                       Connect with me on LinkedIn
+                    </a>
+                </p>
+                <p style='font-size: 0.9rem; color: #888;'>
+                    Powered by TensorFlow & Streamlit | Built with ❤️ for Salary Prediction
+                </p>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+
 
 if __name__ == "__main__":
+
     main()
