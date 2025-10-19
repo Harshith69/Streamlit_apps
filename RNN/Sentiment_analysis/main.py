@@ -56,21 +56,6 @@ st.markdown("""
         margin-top: 0.5rem;
     }
     
-    .review-box {
-        background: rgba(45, 45, 45, 0.9);
-        border: 2px solid #E50914;
-        border-radius: 10px;
-        padding: 2rem;
-        margin: 2rem 0;
-        box-shadow: 0 4px 20px rgba(229, 9, 20, 0.2);
-        transition: all 0.3s ease;
-    }
-    
-    .review-box:hover {
-        box-shadow: 0 8px 30px rgba(229, 9, 20, 0.4);
-        transform: translateY(-5px);
-    }
-    
     .sentiment-positive {
         background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%);
         color: white;
@@ -187,6 +172,14 @@ st.markdown("""
         border-radius: 10px;
         transition: width 1s ease-in-out;
     }
+    
+    .content-section {
+        background: rgba(45, 45, 45, 0.7);
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 4px solid #E50914;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -218,11 +211,26 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 💡 Pro Tip")
     st.markdown("For best results, write reviews similar to IMDB format - focus on plot, acting, direction, and overall enjoyment.")
-    
-# Main content area - Fixed to remove empty boxes
+
+# Main content
+col1, col2, col3 = st.columns([1, 2, 1])
+
+with col2:
+    st.markdown("""
+    <div class='netflix-header'>
+        <h1 class='netflix-title'>NETFLIX SENTIMENT</h1>
+        <p class='netflix-subtitle'>AI-Powered Movie Review Analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Movie reel animation
+st.markdown("<div class='movie-reel'>🎬 🎭 🎪 🎫 📽️ 🎞️ 🍿 🎦</div>", unsafe_allow_html=True)
+
+# Main content area
 col1, col2 = st.columns([3, 2])
 
 with col1:
+    st.markdown("<div class='content-section'>", unsafe_allow_html=True)
     st.markdown("### 🎭 Write Your Movie Review")
     st.markdown("Share your thoughts about any movie and let AI analyze the sentiment!")
     
@@ -232,8 +240,10 @@ with col1:
         placeholder="Type your movie review here...\n\nExample: 'This movie was absolutely fantastic! The acting was superb, the storyline was engaging, and the cinematography was breathtaking. Highly recommended!'",
         label_visibility="collapsed"
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with col2:
+    st.markdown("<div class='content-section'>", unsafe_allow_html=True)
     st.markdown("### 📊 Quick Analysis Tips")
     st.markdown("""
     - **Positive words**: amazing, fantastic, brilliant, excellent, wonderful
@@ -255,87 +265,118 @@ with col2:
         st.rerun()
     
     if 'sample_review' in st.session_state:
-        st.info("Sample Review Loaded! Click Analyze Sentiment to test.")
+        st.info("📝 Sample Review Loaded! Click 'Analyze Sentiment' to test.")
+        # Update the text area with sample review
+        user_input = st.session_state.sample_review
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# Load model and process (you'll need to implement this part)
-def load_sentiment_model():
-    """Placeholder for model loading - replace with your actual model"""
-    try:
-        # This is where you'd load your actual model
-        # model = load_model('simple_rnn_imdb.h5')
-        # word_index = imdb.get_word_index()
-        # return model, word_index
-        return None, None
-    except:
-        return None, None
-
-def preprocess_text(text, word_index):
-    """Placeholder for text preprocessing"""
-    # Implement your preprocessing logic here
-    return np.random.random()
-
-def predict_sentiment(text, model, word_index):
-    """Placeholder for prediction - returns random results for demo"""
-    # Replace with actual prediction
-    score = np.random.uniform(0, 1)
-    sentiment = "Positive" if score > 0.5 else "Negative"
+# Mock sentiment analysis function
+def analyze_sentiment_mock(text):
+    """Mock sentiment analysis - replace with your actual model"""
+    text_lower = text.lower()
+    
+    positive_words = ['amazing', 'fantastic', 'brilliant', 'excellent', 'wonderful', 
+                     'great', 'awesome', 'love', 'best', 'perfect', 'superb', 'incredible',
+                     'outstanding', 'masterpiece', 'enjoyed', 'recommend']
+    negative_words = ['terrible', 'awful', 'boring', 'disappointing', 'waste', 
+                     'bad', 'worst', 'hate', 'poor', 'awful', 'terrible', 'boring',
+                     'dislike', 'horrible', 'stupid', 'nonsense']
+    
+    positive_count = sum(1 for word in positive_words if word in text_lower)
+    negative_count = sum(1 for word in negative_words if word in text_lower)
+    
+    if positive_count > negative_count:
+        score = min(0.95, 0.5 + (positive_count * 0.1))
+        sentiment = "Positive"
+    elif negative_count > positive_count:
+        score = max(0.05, 0.5 - (negative_count * 0.1))
+        sentiment = "Negative"
+    else:
+        score = 0.5
+        sentiment = "Neutral"
+    
     return sentiment, score
 
-# Process when analyze is clicked
-if analyze_clicked and user_input.strip():
-    with st.spinner(""):
-        # Show loading animation
-        st.markdown("<div class='loading-animation'><div class='netflix-loader'></div></div>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #E6E6E6;'>Analyzing your review... 🎭</p>", unsafe_allow_html=True)
-        
-        # Simulate processing time
-        time.sleep(2)
-        
-        # Load model and make prediction (replace with actual implementation)
-        model, word_index = load_sentiment_model()
-        sentiment, score = predict_sentiment(user_input, model, word_index)
-        
-        # Clear loading
-        st.empty()
-        
-        # Display results with animations
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if sentiment == "Positive":
-                st.markdown(f"""
-                <div class='sentiment-positive'>
-                    <h2>🎉 POSITIVE REVIEW!</h2>
-                    <p>This review expresses positive sentiment about the movie</p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class='sentiment-negative'>
-                    <h2>👎 NEGATIVE REVIEW</h2>
-                    <p>This review expresses negative sentiment about the movie</p>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        with col2:
-            confidence_percentage = int(score * 100) if sentiment == "Positive" else int((1 - score) * 100)
-            fill_color = "#00b09b" if sentiment == "Positive" else "#E50914"
-            
-            st.markdown(f"""
-            <div style='text-align: center;'>
-                <h3>Confidence Score</h3>
-                <div class='prediction-score'>{confidence_percentage}%</div>
-                <div class='confidence-bar'>
-                    <div class='confidence-fill' style='width: {confidence_percentage}%; background: {fill_color};'></div>
-                </div>
-                <p style='color: #E6E6E6; margin-top: 1rem;'>
-                    The model is {confidence_percentage}% confident this review is {sentiment.lower()}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+# Analyze button - Fixed version
+st.markdown("---")
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    analyze_clicked = st.button(
+        "🎬 ANALYZE SENTIMENT", 
+        use_container_width=True, 
+        type="primary",
+        key="analyze_btn"
+    )
 
-elif analyze_clicked and not user_input.strip():
-    st.warning("⚠️ Please enter a movie review to analyze!")
+# Process when analyze is clicked
+if analyze_clicked:
+    if user_input and user_input.strip():
+        with st.spinner(""):
+            # Show loading animation
+            st.markdown("<div class='loading-animation'><div class='netflix-loader'></div></div>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #E6E6E6;'>Analyzing your review... 🎭</p>", unsafe_allow_html=True)
+            
+            # Simulate processing time
+            time.sleep(2)
+            
+            # Analyze sentiment using mock function
+            sentiment, score = analyze_sentiment_mock(user_input)
+            
+            # Clear loading
+            st.empty()
+            
+            # Display results with animations
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if sentiment == "Positive":
+                    st.markdown(f"""
+                    <div class='sentiment-positive'>
+                        <h2>🎉 POSITIVE REVIEW!</h2>
+                        <p>This review expresses positive sentiment about the movie</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif sentiment == "Negative":
+                    st.markdown(f"""
+                    <div class='sentiment-negative'>
+                        <h2>👎 NEGATIVE REVIEW</h2>
+                        <p>This review expresses negative sentiment about the movie</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                color: white; padding: 1.5rem; border-radius: 10px; text-align: center;'>
+                        <h2>🤔 NEUTRAL REVIEW</h2>
+                        <p>This review has mixed or neutral sentiment</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with col2:
+                if sentiment == "Positive":
+                    confidence_percentage = int(score * 100)
+                    fill_color = "#00b09b"
+                elif sentiment == "Negative":
+                    confidence_percentage = int((1 - score) * 100)
+                    fill_color = "#E50914"
+                else:
+                    confidence_percentage = 50
+                    fill_color = "#667eea"
+                
+                st.markdown(f"""
+                <div style='text-align: center;'>
+                    <h3>Confidence Score</h3>
+                    <div class='prediction-score'>{confidence_percentage}%</div>
+                    <div class='confidence-bar'>
+                        <div class='confidence-fill' style='width: {confidence_percentage}%; background: {fill_color};'></div>
+                    </div>
+                    <p style='color: #E6E6E6; margin-top: 1rem;'>
+                        The model is {confidence_percentage}% confident this review is {sentiment.lower()}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.warning("⚠️ Please enter a movie review to analyze!")
 
 # Footer
 st.markdown("---")
