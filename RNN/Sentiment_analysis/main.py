@@ -193,68 +193,47 @@ st.markdown("""
 # Sidebar
 with st.sidebar:
     st.markdown("""
-    <div style='padding: 1rem;'>
-        <h2 style='color: #E50914; border-bottom: 2px solid #E50914; padding-bottom: 0.5rem;'>🎯 Dashboard Info</h2>
-        
-        <h3 style='color: #FFFFFF; margin-top: 1.5rem;'>📊 About This App</h3>
-        <p style='color: #E6E6E6;'>This Netflix-themed sentiment analysis tool uses a trained RNN model to classify movie reviews as positive or negative with cinematic animations.</p>
-        
-        <h3 style='color: #FFFFFF; margin-top: 1.5rem;'>🎬 How to Use</h3>
-        <ol style='color: #E6E6E6; padding-left: 1.2rem;'>
-            <li>Type or paste a movie review in the text area</li>
-            <li>Click the "Analyze Sentiment" button</li>
-            <li>Watch the animated results with confidence score</li>
-            <li>Try different reviews to see various animations</li>
-        </ol>
-        
-        <h3 style='color: #FFFFFF; margin-top: 1.5rem;'>🤖 Model Info</h3>
-        <ul style='color: #E6E6E6; padding-left: 1.2rem;'>
-            <li><strong>Architecture:</strong> Simple RNN</li>
-            <li><strong>Training Data:</strong> IMDB Movie Reviews</li>
-            <li><strong>Accuracy:</strong> ~85% on test data</li>
-            <li><strong>Vocabulary:</strong> 10,000 most frequent words</li>
-        </ul>
-        
-        <div style='background: rgba(229, 9, 20, 0.1); padding: 1rem; border-radius: 5px; margin-top: 2rem;'>
-            <h4 style='color: #E50914;'>💡 Pro Tip</h4>
-            <p style='color: #E6E6E6; margin: 0;'>For best results, write reviews similar to IMDB format - focus on plot, acting, direction, and overall enjoyment.</p>
-        </div>
-    </div>
+    <h2 style='color: #E50914; border-bottom: 2px solid #E50914; padding-bottom: 0.5rem;'>🎯 Dashboard Info</h2>
     """, unsafe_allow_html=True)
-
-# Main content
-col1, col2, col3 = st.columns([1, 2, 1])
-
-with col2:
+    
+    st.markdown("### 📊 About This App")
+    st.markdown("This Netflix-themed sentiment analysis tool uses a trained RNN model to classify movie reviews as positive or negative with cinematic animations.")
+    
+    st.markdown("### 🎬 How to Use")
     st.markdown("""
-    <div class='netflix-header'>
-        <h1 class='netflix-title'>NETFLIX SENTIMENT</h1>
-        <p class='netflix-subtitle'>AI-Powered Movie Review Analysis</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# Movie reel animation
-st.markdown("<div class='movie-reel'>🎬 🎭 🎪 🎫 📽️ 🎞️ 🍿 🎦</div>", unsafe_allow_html=True)
-
-# Main content area
+    1. **Type or paste** a movie review in the text area
+    2. **Click** the "Analyze Sentiment" button
+    3. **Watch** the animated results with confidence score
+    4. **Try** different reviews to see various animations
+    """)
+    
+    st.markdown("### 🤖 Model Info")
+    st.markdown("""
+    - **Architecture**: Simple RNN
+    - **Training Data**: IMDB Movie Reviews
+    - **Accuracy**: ~85% on test data
+    - **Vocabulary**: 10,000 most frequent words
+    """)
+    
+    st.markdown("---")
+    st.markdown("### 💡 Pro Tip")
+    st.markdown("For best results, write reviews similar to IMDB format - focus on plot, acting, direction, and overall enjoyment.")
+    
+# Main content area - Fixed to remove empty boxes
 col1, col2 = st.columns([3, 2])
 
 with col1:
-    st.markdown("<div class='review-box'>", unsafe_allow_html=True)
     st.markdown("### 🎭 Write Your Movie Review")
     st.markdown("Share your thoughts about any movie and let AI analyze the sentiment!")
     
     user_input = st.text_area(
-        "",
+        "Review Input",
         height=200,
         placeholder="Type your movie review here...\n\nExample: 'This movie was absolutely fantastic! The acting was superb, the storyline was engaging, and the cinematography was breathtaking. Highly recommended!'",
         label_visibility="collapsed"
     )
-    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with col2:
-    st.markdown("<div class='review-box'>", unsafe_allow_html=True)
     st.markdown("### 📊 Quick Analysis Tips")
     st.markdown("""
     - **Positive words**: amazing, fantastic, brilliant, excellent, wonderful
@@ -270,25 +249,13 @@ with col2:
         "The cinematography was beautiful but the characters were poorly developed and the pacing was too slow."
     ]
     
-    if st.button("🎲 Try Sample Review"):
+    if st.button("🎲 Try Sample Review", use_container_width=True):
         sample_review = random.choice(sample_reviews)
         st.session_state.sample_review = sample_review
         st.rerun()
     
     if 'sample_review' in st.session_state:
-        user_input = st.session_state.sample_review
-        st.text_area("", value=user_input, height=100, label_visibility="collapsed")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# Analyze button
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    analyze_clicked = st.button(
-        "🎬 ANALYZE SENTIMENT", 
-        use_container_width=True, 
-        type="primary"
-    )
+        st.info("Sample Review Loaded! Click Analyze Sentiment to test.")
 
 # Load model and process (you'll need to implement this part)
 def load_sentiment_model():
