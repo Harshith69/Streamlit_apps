@@ -5,56 +5,69 @@ import os
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-# Get the current directory path
-current_dir = os.path.dirname(os.path.abspath(__file__))
+st.set_page_config(page_title="Next Word Prediction")
+
+# Display loading status
+st.write("Loading model and tokenizer...")
 
 try:
-    # Try loading the model with compile=False first
-    model_path = os.path.join(current_dir, 'next_word_lstm_model_with_early_stopping.h5')
-    model = load_model(model_path, compile=False)
-    st.success("Model loaded successfully!")
-except Exception as e:
-    st.error(f"Error loading model: {e}")
-    # If that fails, try these alternatives
+    # Load model with multiple fallback options
+    model_path = 'next_word_lstm_model_with_early_stopping.h5'
+    
+    # Try different loading strategies
     try:
-        import h5py
+        model = load_model(model_path, compile=False)
+    except:
         model = load_model(model_path, compile=False, safe_mode=False)
-        st.success("Model loaded with safe_mode=False!")
-    except Exception as e2:
-        st.error(f"Alternative loading also failed: {e2}")
-        st.stop()
-
-# Load the tokenizer
-try:
-    tokenizer_path = os.path.join(current_dir, 'tokenizer.pickle')
-    with open(tokenizer_path, 'rb') as handle:
+    
+    st.success("✅ Model loaded successfully!")
+    
+    # Load tokenizer
+    with open('tokenizer.pickle', 'rb') as handle:
         tokenizer = pickle.load(handle)
-    st.success("Tokenizer loaded successfully!")
+    st.success("✅ Tokenizer loaded successfully!")
+    
 except Exception as e:
-    st.error(f"Error loading tokenizer: {e}")
+    st.error(f"❌ Loading failed: {str(e)}")
+    st.info("""
+    **Troubleshooting tips:**
+    1. Make sure the model file (.h5) and tokenizer (.pickle) are in the same directory as this app
+    2. The model might have been created with a different TensorFlow version
+    3. Try re-training the model with your current TensorFlow version
+    """)
     st.stop()
 
 # Function to predict the next word
 def predict_next_word(model, tokenizer, text, max_sequence_len):
-    token_list = tokenizer.texts_to_sequences([text])[0]
-    if len(token_list) >= max_sequence_len:
-        token_list = token_list[-(max_sequence_len-1):]
-    token_list = pad_sequences([token_list], maxlen=max_sequence_len-1, padding='pre')
-    predicted = model.predict(token_list, verbose=0)
-    predicted_word_index = np.argmax(predicted, axis=1)
-    for word, index in tokenizer.word_index.items():
-        if index == predicted_word_index:
-            return word
-    return None
+    try:
+        token_list = tokenizer.texts_to_sequences([text])[0]
+        if len(token_list) >= max_sequence_len:
+            token_list = token_list[-(max_sequence_len-1):]
+        token_list = pad_sequences([token_list], maxlen=max_sequence_len-1, padding='pre')
+        predicted = model.predict(token_list, verbose=0)
+        predicted_word_index = np.argmax(predicted, axis=1)[0]
+        
+        for word, index in tokenizer.word_index.items():
+            if index == predicted_word_index:
+                return word
+        return None
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-# Streamlit app
-st.title("Next Word Prediction With LSTM And Early Stopping")
-input_text = st.text_input("Enter the sequence of Words", "To be or not to")
+# Streamlit app UI
+st.title("🔮 Next Word Prediction with LSTM")
+st.write("Enter a sequence of words and predict what comes next!")
+
+input_text = st.text_input("Enter text:", "To be or not to")
+max_sequence_len = model.input_shape[1] + 1
 
 if st.button("Predict Next Word"):
-    try:
-        max_sequence_len = model.input_shape[1] + 1
-        next_word = predict_next_word(model, tokenizer, input_text, max_sequence_len)
-        st.write(f'Next word: {next_word}')
-    except Exception as e:
-        st.error(f"Prediction error: {e}")
+    if input_text.strip():
+        with st.spinner('Predicting...'):
+            next_word = predict_next_word(model, tokenizer, input_text, max_sequence_len)
+        if next_word and not next_word.startswith("Error"):
+            st.success(f"**Next word:** {next_word}")
+        else:
+            st.error(f"Prediction failed: {next_word}")
+    else:
+        st.warning("Please enter some text first!")
