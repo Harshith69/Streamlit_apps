@@ -7,3 +7,4 @@ pandas>=2.0.0
 scikit-learn>=1.3.0 
 tensorboard
 scikeras
+h5py>=3.8.0
