@@ -5,7 +5,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 #Load the LSTM Model
-model=load_model('next_word_lstm.h5')
+model=load_model('next_word_lstm_model_with_early_stopping.h5')
 
 #3 Laod the tokenizer
 with open('tokenizer.pickle','rb') as handle:
@@ -31,4 +31,5 @@ if st.button("Predict Next Word"):
     max_sequence_len = model.input_shape[1] + 1  # Retrieve the max sequence length from the model input shape
     next_word = predict_next_word(model, tokenizer, input_text, max_sequence_len)
     st.write(f'Next word: {next_word}')
+
 
