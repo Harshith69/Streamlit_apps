@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import os
 from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.layers import LSTM
 
 # Page configuration
@@ -56,6 +56,7 @@ try:
     st.success("✅ Model loaded successfully!")
 
     # Load tokenizer
+    import keras
     with open(tokenizer_path, 'rb') as handle:
         tokenizer = pickle.load(handle)
 
@@ -113,4 +114,5 @@ if st.button("Predict Next Word"):
             st.error(f"Prediction failed: {next_word}")
     else:
         st.warning("Please enter some text first!")
+
 
