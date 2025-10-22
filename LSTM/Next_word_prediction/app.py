@@ -4,6 +4,7 @@ import pickle
 import os
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.layers import LSTM
 
 # Page configuration
 st.set_page_config(page_title="Next Word Prediction")
@@ -19,11 +20,19 @@ try:
     model_path = os.path.join(base_path, 'next_word_lstm_model_with_early_stopping.h5')
     tokenizer_path = os.path.join(base_path, 'tokenizer.pickle')
 
-    # Load model (with safe fallback)
+    # Load model with fallback for time_major error
     try:
         model = load_model(model_path, compile=False)
-    except:
-        model = load_model(model_path, compile=False, safe_mode=False)
+    except TypeError as e:
+        if "time_major" in str(e):
+            # Define a compatible LSTM class that ignores 'time_major'
+            class CompatibleLSTM(LSTM):
+                def __init__(self, *args, **kwargs):
+                    kwargs.pop('time_major', None)
+                    super().__init__(*args, **kwargs)
+            model = load_model(model_path, compile=False, custom_objects={'LSTM': CompatibleLSTM})
+        else:
+            raise e
 
     st.success("✅ Model loaded successfully!")
 
