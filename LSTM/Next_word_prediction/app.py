@@ -8,20 +8,37 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # Get the current directory path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Load the LSTM Model with explicit path
-model_path = os.path.join(current_dir, 'next_word_lstm_model_with_early_stopping.h5')
-model = load_model(model_path)
+try:
+    # Try loading the model with compile=False first
+    model_path = os.path.join(current_dir, 'next_word_lstm_model_with_early_stopping.h5')
+    model = load_model(model_path, compile=False)
+    st.success("Model loaded successfully!")
+except Exception as e:
+    st.error(f"Error loading model: {e}")
+    # If that fails, try these alternatives
+    try:
+        import h5py
+        model = load_model(model_path, compile=False, safe_mode=False)
+        st.success("Model loaded with safe_mode=False!")
+    except Exception as e2:
+        st.error(f"Alternative loading also failed: {e2}")
+        st.stop()
 
-# Load the tokenizer with explicit path
-tokenizer_path = os.path.join(current_dir, 'tokenizer.pickle')
-with open(tokenizer_path, 'rb') as handle:
-    tokenizer = pickle.load(handle)
+# Load the tokenizer
+try:
+    tokenizer_path = os.path.join(current_dir, 'tokenizer.pickle')
+    with open(tokenizer_path, 'rb') as handle:
+        tokenizer = pickle.load(handle)
+    st.success("Tokenizer loaded successfully!")
+except Exception as e:
+    st.error(f"Error loading tokenizer: {e}")
+    st.stop()
 
 # Function to predict the next word
 def predict_next_word(model, tokenizer, text, max_sequence_len):
     token_list = tokenizer.texts_to_sequences([text])[0]
     if len(token_list) >= max_sequence_len:
-        token_list = token_list[-(max_sequence_len-1):]  # Ensure the sequence length matches max_sequence_len-1
+        token_list = token_list[-(max_sequence_len-1):]
     token_list = pad_sequences([token_list], maxlen=max_sequence_len-1, padding='pre')
     predicted = model.predict(token_list, verbose=0)
     predicted_word_index = np.argmax(predicted, axis=1)
@@ -33,7 +50,11 @@ def predict_next_word(model, tokenizer, text, max_sequence_len):
 # Streamlit app
 st.title("Next Word Prediction With LSTM And Early Stopping")
 input_text = st.text_input("Enter the sequence of Words", "To be or not to")
+
 if st.button("Predict Next Word"):
-    max_sequence_len = model.input_shape[1] + 1  # Retrieve the max sequence length from the model input shape
-    next_word = predict_next_word(model, tokenizer, input_text, max_sequence_len)
-    st.write(f'Next word: {next_word}')
+    try:
+        max_sequence_len = model.input_shape[1] + 1
+        next_word = predict_next_word(model, tokenizer, input_text, max_sequence_len)
+        st.write(f'Next word: {next_word}')
+    except Exception as e:
+        st.error(f"Prediction error: {e}")
