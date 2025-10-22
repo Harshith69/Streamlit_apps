@@ -22,17 +22,36 @@ try:
 
     # Load model with fallback for time_major error
     try:
-        model = load_model(model_path, compile=False)
-    except TypeError as e:
-        if "time_major" in str(e):
-            # Define a compatible LSTM class that ignores 'time_major'
-            class CompatibleLSTM(LSTM):
-                def __init__(self, *args, **kwargs):
-                    kwargs.pop('time_major', None)
-                    super().__init__(*args, **kwargs)
-            model = load_model(model_path, compile=False, custom_objects={'LSTM': CompatibleLSTM})
-        else:
-            raise e
+        from tensorflow.keras.layers import LSTM as OriginalLSTM
+        from tensorflow.keras.models import load_model
+    
+        # Define a wrapper to ignore 'time_major'
+        class CompatibleLSTM(OriginalLSTM):
+            def __init__(self, *args, **kwargs):
+                kwargs.pop('time_major', None)  # remove unsupported arg
+                super().__init__(*args, **kwargs)
+    
+        # Load model safely
+        model = load_model(
+            model_path,
+            compile=False,
+            custom_objects={'LSTM': CompatibleLSTM}
+        )
+        st.success("✅ Model loaded successfully (with LSTM compatibility patch)!")
+    
+    except Exception as e:
+        st.error(f"❌ Model loading failed: {str(e)}")
+        st.info("""
+        **Fix suggestions:**
+        1. Ensure `.h5` and `.pickle` files are in the same folder.
+        2. If still failing, open your notebook and re-save:
+           ```python
+           model.save('next_word_lstm_model_with_early_stopping.h5', include_optimizer=False)
+           ```
+        3. Use TensorFlow 2.13.x to save and reload.
+        """)
+        st.stop()
+
 
     st.success("✅ Model loaded successfully!")
 
@@ -94,3 +113,4 @@ if st.button("Predict Next Word"):
             st.error(f"Prediction failed: {next_word}")
     else:
         st.warning("Please enter some text first!")
+
