@@ -7,9 +7,10 @@ import pickle
 import os
 
 # ------------------ File Paths ------------------
-MODEL_PATH = 'predmodel.h5'
-GENDER_ENCODER_PATH = 'gender_encoder.pkl'
-SCALER_PATH = 'scaler.pkl'
+MODEL_DIR = 'ANN/Fitness_prediction'
+MODEL_PATH = os.path.join(MODEL_DIR, 'predmodel.h5')
+GENDER_ENCODER_PATH = os.path.join(MODEL_DIR, 'gender_encoder.pkl')
+SCALER_PATH = os.path.join(MODEL_DIR, 'scaler.pkl')
 
 # ------------------ Check if required files exist ------------------
 def check_required_files():
