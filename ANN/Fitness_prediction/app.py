@@ -229,8 +229,8 @@ model, label_encoder_gender, scaler = load_model_and_encoders()
 st.markdown("""
 <div class="main-header">
     <div style="text-align: center;">
-        <h1 style="color: white; font-size: 3rem; margin-bottom: 0.5rem; font-weight: 800;">🏃‍♂️ Advanced Fitness Intelligence Platform</h1>
-        <p style="color: rgba(255,255,255,0.9); font-size: 1.2rem; margin-bottom: 0;">
+        <h1 style="color: #ffffff; font-size: 3rem; margin-bottom: 0.5rem; font-weight: 800;">🏃‍♂️ Advanced Fitness Intelligence Platform</h1>
+        <p style="color: #ffffff; font-size: 1.2rem; margin-bottom: 0;">
             AI-powered fitness analytics with personalized insights and recommendations
         </p>
     </div>
@@ -568,8 +568,8 @@ if 'show_results' in st.session_state and st.session_state.show_results:
 with st.sidebar:
     st.markdown("""
     <div style="text-align: center; padding: 1.5rem; background: linear-gradient(135deg, #FF6B35 0%, #FF8E53 100%); border-radius: 16px; margin-bottom: 1rem;">
-        <h2 style="color: white; margin: 0; font-size: 1.8rem;">🏃‍♂️ FitAI</h2>
-        <p style="color: white; margin: 0.5rem 0 0 0; font-size: 1rem;">Advanced Fitness Analytics</p>
+        <h2 style="color: #ffffff; margin: 0; font-size: 1.8rem;">🏃‍♂️ FitAI</h2>
+        <p style="color: #ffffff; margin: 0.5rem 0 0 0; font-size: 1rem;">Advanced Fitness Analytics</p>
     </div>
     """, unsafe_allow_html=True)
     
