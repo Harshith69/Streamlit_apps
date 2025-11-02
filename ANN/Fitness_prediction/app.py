@@ -12,6 +12,7 @@ import seaborn as sns
 import requests
 import json
 import os
+import base64
 
 # ------------------ File Paths ------------------
 MODEL_DIR = 'ANN/Fitness_prediction'
@@ -25,103 +26,144 @@ try:
     LOTTIE_AVAILABLE = True
 except ImportError:
     LOTTIE_AVAILABLE = False
-    st.warning("streamlit-lottie not available. Animations disabled.")
 
 # ------------------ Page Configuration ------------------
 st.set_page_config(
-    page_title="FitAI - Advanced Fitness Analytics",
+    page_title="Advanced Fitness Intelligence Platform",
     page_icon="🏃‍♂️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ------------------ Custom CSS with Fitness Theme ------------------
-def load_css():
+def set_background():
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800&display=swap');
     
-    .main {
+    .stApp {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         font-family: 'Montserrat', sans-serif;
     }
     
-    .stApp {
-        background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-        color: #ffffff;
+    .main {
+        background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), 
+                    url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80');
+        background-size: cover;
+        background-attachment: fixed;
+        background-position: center;
     }
     
     .css-1d391kg, .css-1v0mbdj, .css-1v3fvcr {
-        background-color: rgba(255,255,255,0.1);
-        backdrop-filter: blur(10px);
-        border-radius: 15px;
-        padding: 20px;
-        border: 1px solid rgba(255,255,255,0.2);
+        background-color: rgba(255,255,255,0.15);
+        backdrop-filter: blur(15px);
+        border-radius: 20px;
+        padding: 25px;
+        border: 1px solid rgba(255,255,255,0.3);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
     }
     
     .stButton>button {
         background: linear-gradient(45deg, #FF4B2B, #FF416C);
         color: white;
         border: none;
-        padding: 12px 30px;
-        border-radius: 25px;
-        font-weight: 600;
-        font-size: 16px;
+        padding: 15px 40px;
+        border-radius: 30px;
+        font-weight: 700;
+        font-size: 18px;
         transition: all 0.3s ease;
         width: 100%;
+        box-shadow: 0 8px 25px rgba(255,75,43,0.3);
     }
     
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 20px rgba(255,75,43,0.3);
+        transform: translateY(-3px);
+        box-shadow: 0 15px 35px rgba(255,75,43,0.4);
     }
     
     .metric-card {
-        background: rgba(255,255,255,0.1);
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px solid rgba(255,255,255,0.2);
-        backdrop-filter: blur(10px);
+        background: rgba(255,255,255,0.15);
+        padding: 25px;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.3);
+        backdrop-filter: blur(15px);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
     }
     
     .prediction-card {
         background: linear-gradient(135deg, #00b09b, #96c93d);
-        padding: 25px;
-        border-radius: 20px;
+        padding: 30px;
+        border-radius: 25px;
         text-align: center;
-        box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        border: 2px solid rgba(255,255,255,0.3);
     }
     
     .risk-card {
         background: linear-gradient(135deg, #ff416c, #ff4b2b);
-        padding: 25px;
-        border-radius: 20px;
+        padding: 30px;
+        border-radius: 25px;
         text-align: center;
-        box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        border: 2px solid rgba(255,255,255,0.3);
     }
     
     .footer {
-        background: rgba(0,0,0,0.3);
-        padding: 30px;
-        border-radius: 15px;
+        background: rgba(0,0,0,0.4);
+        padding: 40px;
+        border-radius: 20px;
         text-align: center;
-        margin-top: 40px;
+        margin-top: 50px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.2);
     }
     
     h1, h2, h3 {
-        font-weight: 700 !important;
+        font-weight: 800 !important;
         background: linear-gradient(45deg, #FF4B2B, #FF416C);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
     
     .feature-box {
-        background: rgba(255,255,255,0.05);
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-        border-left: 4px solid #FF4B2B;
+        background: rgba(255,255,255,0.1);
+        padding: 20px;
+        border-radius: 15px;
+        margin: 15px 0;
+        border-left: 5px solid #FF4B2B;
+        backdrop-filter: blur(10px);
     }
+    
+    /* Animation for cards */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .css-1d391kg, .css-1v0mbdj, .css-1v3fvcr {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    /* Custom metric styling */
+    [data-testid="metric-container"] {
+        background: rgba(255,255,255,0.1);
+        padding: 20px;
+        border-radius: 15px;
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    /* Sleep quality metric specific styling */
+    .sleep-metric [data-testid="stMetricValue"] {
+        font-size: 1rem !important;
+    }
+    
     </style>
     """, unsafe_allow_html=True)
 
@@ -141,13 +183,10 @@ def load_model_and_encoders():
     try:
         # Check if files exist
         if not os.path.exists(MODEL_PATH):
-            st.error(f"Model file not found at: {MODEL_PATH}")
             return None, None, None
         if not os.path.exists(GENDER_ENCODER_PATH):
-            st.error(f"Gender encoder file not found at: {GENDER_ENCODER_PATH}")
             return None, None, None
         if not os.path.exists(SCALER_PATH):
-            st.error(f"Scaler file not found at: {SCALER_PATH}")
             return None, None, None
             
         model = tf.keras.models.load_model(MODEL_PATH)
@@ -156,36 +195,24 @@ def load_model_and_encoders():
         with open(SCALER_PATH, 'rb') as file:
             scaler = pickle.load(file)
         
-        st.success("✅ Model and encoders loaded successfully!")
         return model, label_encoder_gender, scaler
         
     except Exception as e:
         st.error(f"Error loading model files: {e}")
-        st.info(f"Looking for files in: {MODEL_DIR}")
         return None, None, None
 
 # ------------------ Initialize App ------------------
-load_css()
+set_background()
 model, label_encoder_gender, scaler = load_model_and_encoders()
 
-# Show warning if model not loaded
-if model is None:
-    st.error("""
-    ⚠️ Model files not found. Please ensure the following files exist:
-    - `ANN/Fitness_prediction/predmodel.h5`
-    - `ANN/Fitness_prediction/gender_encoder.pkl` 
-    - `ANN/Fitness_prediction/scaler.pkl`
-    """)
-
-# ------------------ Header Section ------------------
+# ------------------ Header Section with Animation ------------------
 col1, col2, col3 = st.columns([2, 1, 2])
 
 with col1:
-    st.title('🏃‍♂️ FitAI')
-    st.markdown('<h2 style="color: #ffffff; font-size: 2.5rem;">Advanced Fitness Intelligence Platform</h2>', unsafe_allow_html=True)
+    st.title('🏃‍♂️ Advanced Fitness Intelligence Platform')
     st.markdown("""
-    <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 15px; border-left: 4px solid #FF4B2B;">
-    <p style="font-size: 1.2rem; margin: 0;">Predict fitness levels with AI-powered analytics and get personalized health insights</p>
+    <div style="background: rgba(255,255,255,0.15); padding: 25px; border-radius: 20px; border-left: 5px solid #FF4B2B; backdrop-filter: blur(15px);">
+    <p style="font-size: 1.3rem; margin: 0; color: white; font-weight: 600;">AI-powered fitness analytics with personalized insights and recommendations</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -193,9 +220,20 @@ with col3:
     if LOTTIE_AVAILABLE:
         lottie_fitness = load_lottie_url("https://assets1.lottiefiles.com/packages/lf20_0pfisjz6.json")
         if lottie_fitness:
-            st_lottie(lottie_fitness, height=200, key="fitness")
+            st_lottie(lottie_fitness, height=180, key="fitness")
     else:
-        st.image("https://via.placeholder.com/300x200/667eea/ffffff?text=🏃‍♂️+FITNESS+AI", use_column_width=True)
+        # Fallback animation using CSS
+        st.markdown("""
+        <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 100px; animation: bounce 2s infinite;">🏃‍♂️</div>
+        </div>
+        <style>
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
 # ------------------ Interactive Input Section ------------------
 st.markdown("---")
@@ -240,9 +278,16 @@ with input_col3:
     sleep_hours = st.slider('**Daily Sleep Hours**', min_value=3.0, max_value=12.0, value=7.0,
                            help="Average hours of sleep per night")
     
-    # Sleep quality indicator
+    # Sleep quality indicator with smaller font
     sleep_status = "🟢 Optimal" if 7 <= sleep_hours <= 9 else "🟡 Needs improvement" if 6 <= sleep_hours < 7 or 9 < sleep_hours <= 10 else "🔴 Poor"
-    st.metric("**Sleep Quality**", sleep_status)
+    st.markdown(f"""
+    <div class="sleep-metric">
+    <div data-testid="stMetric" style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.2);">
+        <div data-testid="stMetricLabel" style="color: white; font-size: 1rem; font-weight: 600;">Sleep Quality</div>
+        <div data-testid="stMetricValue" style="color: white; font-size: 1rem; font-weight: 400;">{sleep_status}</div>
+    </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ------------------ Real-time Health Dashboard ------------------
 st.markdown("---")
@@ -301,7 +346,7 @@ with viz_col1:
         r=values + [values[0]],  # Close the radar
         theta=categories + [categories[0]],
         fill='toself',
-        fillcolor='rgba(255,75,43,0.3)',
+        fillcolor='rgba(255,75,43,0.4)',
         line=dict(color='#FF4B2B', width=3),
         name='Your Health Profile'
     ))
@@ -309,13 +354,14 @@ with viz_col1:
     fig_radar.update_layout(
         polar=dict(
             radialaxis=dict(visible=True, range=[0, 1]),
-            bgcolor='rgba(0,0,0,0.1)'
+            bgcolor='rgba(255,255,255,0.1)'
         ),
         showlegend=False,
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white'),
-        height=400
+        font=dict(color='white', size=12),
+        height=450,
+        margin=dict(l=50, r=50, t=50, b=50)
     )
     st.plotly_chart(fig_radar, use_container_width=True)
 
@@ -323,13 +369,14 @@ with viz_col2:
     # Progress Gauge Charts
     st.subheader("Fitness Progress Gauges")
     
-    # Create subplots for gauges
+    # Create subplots for gauges with more spacing
     fig_gauges = make_subplots(
         rows=2, cols=2,
         specs=[[{'type': 'indicator'}, {'type': 'indicator'}],
                [{'type': 'indicator'}, {'type': 'indicator'}]],
-        vertical_spacing=0.2,
-        horizontal_spacing=0.2
+        vertical_spacing=0.3,  # Increased vertical spacing
+        horizontal_spacing=0.2,
+        row_heights=[0.5, 0.5]
     )
     
     # Steps Gauge
@@ -337,12 +384,13 @@ with viz_col2:
         mode="gauge+number+delta",
         value=steps,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Daily Steps"},
+        title={'text': "Daily Steps", 'font': {'color': 'white', 'size': 14}},
         gauge={'axis': {'range': [0, 15000]},
                'bar': {'color': "#FF4B2B"},
-               'steps': [{'range': [0, 5000], 'color': "lightgray"},
-                        {'range': [5000, 10000], 'color': "gray"}],
-               'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 10000}}
+               'steps': [{'range': [0, 5000], 'color': "rgba(255,255,255,0.2)"},
+                        {'range': [5000, 10000], 'color': "rgba(255,255,255,0.4)"}],
+               'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 10000}},
+        number={'font': {'color': 'white', 'size': 20}}
     ), row=1, col=1)
     
     # Exercise Gauge
@@ -350,12 +398,13 @@ with viz_col2:
         mode="gauge+number+delta",
         value=exercise_hours,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Exercise Hours/Week"},
+        title={'text': "Exercise Hours/Week", 'font': {'color': 'white', 'size': 14}},
         gauge={'axis': {'range': [0, 15]},
                'bar': {'color': "#00b09b"},
-               'steps': [{'range': [0, 3], 'color': "lightgray"},
-                        {'range': [3, 7], 'color': "gray"}],
-               'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 5}}
+               'steps': [{'range': [0, 3], 'color': "rgba(255,255,255,0.2)"},
+                        {'range': [3, 7], 'color': "rgba(255,255,255,0.4)"}],
+               'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 5}},
+        number={'font': {'color': 'white', 'size': 20}}
     ), row=1, col=2)
     
     # Heart Rate Gauge
@@ -363,12 +412,13 @@ with viz_col2:
         mode="gauge+number",
         value=heart_rate,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Resting Heart Rate"},
+        title={'text': "Resting Heart Rate", 'font': {'color': 'white', 'size': 14}},
         gauge={'axis': {'range': [40, 120]},
                'bar': {'color': "#764ba2"},
-               'steps': [{'range': [40, 60], 'color': "lightgreen"},
-                        {'range': [60, 80], 'color': "yellow"},
-                        {'range': [80, 120], 'color': "lightcoral"}]}
+               'steps': [{'range': [40, 60], 'color': "rgba(144,238,144,0.6)"},
+                        {'range': [60, 80], 'color': "rgba(255,255,0,0.6)"},
+                        {'range': [80, 120], 'color': "rgba(255,99,71,0.6)"}]},
+        number={'font': {'color': 'white', 'size': 20}}
     ), row=2, col=1)
     
     # Sleep Gauge
@@ -376,18 +426,20 @@ with viz_col2:
         mode="gauge+number",
         value=sleep_hours,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Sleep Hours/Night"},
+        title={'text': "Sleep Hours/Night", 'font': {'color': 'white', 'size': 14}},
         gauge={'axis': {'range': [3, 12]},
                'bar': {'color': "#667eea"},
-               'steps': [{'range': [3, 7], 'color': "lightcoral"},
-                        {'range': [7, 9], 'color': "lightgreen"},
-                        {'range': [9, 12], 'color': "yellow"}]}
+               'steps': [{'range': [3, 7], 'color': "rgba(255,99,71,0.6)"},
+                        {'range': [7, 9], 'color': "rgba(144,238,144,0.6)"},
+                        {'range': [9, 12], 'color': "rgba(255,255,0,0.6)"}]},
+        number={'font': {'color': 'white', 'size': 20}}
     ), row=2, col=2)
     
     fig_gauges.update_layout(
-        height=400,
+        height=500,
         paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="white")
+        font=dict(color="white"),
+        margin=dict(l=50, r=50, t=50, b=50)
     )
     st.plotly_chart(fig_gauges, use_container_width=True)
 
@@ -505,12 +557,27 @@ if 'show_results' in st.session_state and st.session_state.show_results:
     with rec_col2:
         st.subheader("📈 Progress Tracking")
         
-        # Progress visualization
+        # Define targets for each metric
+        targets = {
+            'Steps': 10000,
+            'Exercise': 5,
+            'Sleep': 8,
+            'Heart Rate': 65,
+            'Blood Pressure': 115
+        }
+        
+        current_values = {
+            'Steps': steps,
+            'Exercise': exercise_hours,
+            'Sleep': sleep_hours,
+            'Heart Rate': heart_rate,
+            'Blood Pressure': blood_pressure
+        }
+        
         metrics_data = {
-            'Metric': ['Steps', 'Exercise', 'Sleep', 'Heart Rate', 'Blood Pressure'],
-            'Current': [steps/10000, exercise_hours/5, min(sleep_hours/9, 1.3), 
-                       max(0, 1 - (heart_rate-40)/80), max(0, 1 - (blood_pressure-80)/100)],
-            'Target': [1.0, 1.0, 1.0, 1.0, 1.0]
+            'Metric': list(current_values.keys()),
+            'Current': list(current_values.values()),
+            'Target': list(targets.values())
         }
         
         df_metrics = pd.DataFrame(metrics_data)
@@ -520,31 +587,40 @@ if 'show_results' in st.session_state and st.session_state.show_results:
             name='Current Status',
             x=df_metrics['Metric'],
             y=df_metrics['Current'],
-            marker_color='#FF4B2B'
+            marker_color='#FF4B2B',
+            text=df_metrics['Current'],
+            textposition='auto',
+            hovertemplate='<b>%{x}</b><br>Current: %{y}<extra></extra>'
         ))
         fig_progress.add_trace(go.Bar(
             name='Target',
             x=df_metrics['Metric'],
             y=df_metrics['Target'],
             marker_color='#00b09b',
-            opacity=0.3
+            opacity=0.6,
+            text=df_metrics['Target'],
+            textposition='auto',
+            hovertemplate='<b>%{x}</b><br>Target: %{y}<extra></extra>'
         ))
         
         fig_progress.update_layout(
             title="Health Metrics vs Targets",
-            barmode='overlay',
+            barmode='group',
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
             font=dict(color='white'),
-            height=400
+            height=450,
+            showlegend=True,
+            xaxis_title="Metrics",
+            yaxis_title="Values"
         )
         st.plotly_chart(fig_progress, use_container_width=True)
 
 # ------------------ Sidebar ------------------
 with st.sidebar:
-    st.markdown('<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 15px; text-align: center;">', unsafe_allow_html=True)
+    st.markdown('<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 20px; text-align: center; box-shadow: 0 8px 25px rgba(0,0,0,0.2);">', unsafe_allow_html=True)
     st.markdown('<h2 style="color: white; margin: 0;">🏃‍♂️ FitAI</h2>', unsafe_allow_html=True)
-    st.markdown('<p style="color: white; margin: 0;">Advanced Fitness Analytics</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color: white; margin: 0; font-size: 1.1rem;">Advanced Fitness Analytics</p>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
@@ -552,7 +628,7 @@ with st.sidebar:
     st.header('🔬 Model Information')
     st.markdown("""
     <div class="feature-box">
-    **AI Architecture**: Deep Neural Network
+    AI Architecture: Deep Neural Network
     - Input Layer: 10 features
     - Hidden Layers: 64-32 neurons
     - Output: Fitness probability
@@ -560,35 +636,12 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    st.header('📊 Health Ranges')
-    st.markdown("""
-    <div class="feature-box">
-    **Optimal Ranges:**
-    - Steps: 7,500-10,000/day
-    - Exercise: 2.5-5 hrs/week
-    - Heart Rate: 60-70 bpm
-    - Sleep: 7-9 hours/night
-    - BP: <120 mmHg
-    - BMI: 18.5-24.9
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # File status information
-    st.header('📁 File Status')
-    file_status = []
-    for path, name in [(MODEL_PATH, 'Model'), (GENDER_ENCODER_PATH, 'Gender Encoder'), (SCALER_PATH, 'Scaler')]:
-        if os.path.exists(path):
-            file_status.append(f"✅ {name}: Loaded")
-        else:
-            file_status.append(f"❌ {name}: Not Found")
-    
-    for status in file_status:
-        st.write(status)
-    
     st.header('⚠️ Disclaimer')
     st.markdown("""
-    <div style="background: rgba(255,75,43,0.1); padding: 15px; border-radius: 10px; border-left: 4px solid #FF4B2B;">
-    This AI tool provides predictive insights only. Consult healthcare professionals for medical advice. Regular check-ups and professional guidance are essential for health management.
+    <div style="background: rgba(255,75,43,0.2); padding: 20px; border-radius: 15px; border-left: 5px solid #FF4B2B; backdrop-filter: blur(10px);">
+    <p style="color: white; margin: 0; font-size: 0.9rem;">
+    This AI tool is trained using Machine Learning (ML) models and provides predictive insights only. Do not use this tool for medical advice.
+    </p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -601,7 +654,7 @@ st.markdown("""
         <p style="font-size: 1.4rem; font-weight: bold; color: #FF6B6B; margin-bottom: 0.5rem;">
             Harshith Narasimhamurthy
         </p>
-        <p style="margin-bottom: 0.5rem; font-size: 1.1rem;">
+        <p style="margin-bottom: 0.5rem; font-size: 1.1rem; color: white;">
             📧 harshithnchandan@gmail.com | 📱 +919663918804
         </p>
         <p style="margin-bottom: 1rem; font-size: 1.1rem;">
