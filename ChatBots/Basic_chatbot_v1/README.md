@@ -1,0 +1,1 @@
+A simple chatbot built with Streamlit, LangChain and the Gemma model via Ollama. This is a basic project developed while learning about Large Language Models (LLMs) and their integration using LangChain.
