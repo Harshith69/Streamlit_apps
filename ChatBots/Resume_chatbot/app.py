@@ -1,5 +1,5 @@
 import streamlit as st
-import PyPDF2
+import pypdf
 import chromadb
 from sentence_transformers import SentenceTransformer
 import tempfile
@@ -108,7 +108,7 @@ def process_resume(pdf_file):
         
         # Read PDF
         with open(tmp_path, 'rb') as file:
-            reader = PyPDF2.PdfReader(file)
+            reader = pypdf.PdfReader(file)
             text = ""
             for page in reader.pages:
                 page_text = page.extract_text()
