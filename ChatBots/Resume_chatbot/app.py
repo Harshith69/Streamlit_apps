@@ -1,10 +1,11 @@
 import streamlit as st
 import pypdf
-import chromadb
 from sentence_transformers import SentenceTransformer
 import tempfile
 import os
 import re
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Page configuration
 st.set_page_config(
@@ -99,7 +100,7 @@ def clean_text(text):
     return text.strip()
 
 def process_resume(pdf_file):
-    """Process uploaded PDF resume"""
+    """Process uploaded PDF resume without chromadb"""
     try:
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
@@ -127,7 +128,7 @@ def process_resume(pdf_file):
         current_chunk = ""
         
         for sentence in sentences:
-            if len(current_chunk + sentence) < 800:  # Smaller chunks for better performance
+            if len(current_chunk + sentence) < 800:
                 current_chunk += sentence + ". "
             else:
                 if current_chunk:
@@ -137,50 +138,39 @@ def process_resume(pdf_file):
         if current_chunk:
             chunks.append(current_chunk.strip())
         
-        # Initialize embedder
+        # Initialize embedder and create embeddings
         embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        chunk_embeddings = embedder.encode(chunks)
         
-        # Create ChromaDB client and collection
-        client = chromadb.Client()
-        collection = client.create_collection("resume_data")
-        
-        # Add documents in batches to avoid memory issues
-        batch_size = 10
-        for i in range(0, len(chunks), batch_size):
-            batch_chunks = chunks[i:i + batch_size]
-            batch_embeddings = embedder.encode(batch_chunks).tolist()
-            
-            # Add to collection
-            for j, (chunk, embedding) in enumerate(zip(batch_chunks, batch_embeddings)):
-                collection.add(
-                    documents=[chunk],
-                    embeddings=[embedding],
-                    ids=[f"chunk_{i+j}"]
-                )
+        # Store in session state (no chromadb)
+        st.session_state.chunks = chunks
+        st.session_state.chunk_embeddings = chunk_embeddings
+        st.session_state.embedder = embedder
         
         # Clean up
         os.unlink(tmp_path)
         
-        return collection, embedder
+        return True
         
     except Exception as e:
-        # Clean up temp file if it exists
         if 'tmp_path' in locals() and os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise e
 
 def get_similar_content(question, top_k=3):
-    """Find similar content from resume"""
+    """Find similar content using cosine similarity"""
     try:
-        query_embedding = st.session_state.embedder.encode([question]).tolist()
-        results = st.session_state.collection.query(
-            query_embeddings=query_embedding,
-            n_results=top_k
-        )
+        question_embedding = st.session_state.embedder.encode([question])
+        similarities = cosine_similarity(
+            question_embedding, 
+            st.session_state.chunk_embeddings
+        )[0]
         
-        if results['documents'] and results['documents'][0]:
-            return " ".join(results['documents'][0])
-        return "No relevant information found in resume."
+        # Get top_k most similar chunks
+        top_indices = similarities.argsort()[-top_k:][::-1]
+        relevant_chunks = [st.session_state.chunks[i] for i in top_indices]
+        
+        return " ".join(relevant_chunks)
         
     except Exception as e:
         return f"Error searching resume: {str(e)}"
