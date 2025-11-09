@@ -3,8 +3,7 @@ import pypdf
 import tempfile
 import os
 import re
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
-import torch
+
 
 def initialize_session_state():
     if 'resume_processed' not in st.session_state:
@@ -22,28 +21,8 @@ def initialize_session_state():
 
 @st.cache_resource
 def load_ai_model():
-    """Load a smaller but capable model that works on Streamlit Cloud"""
-    try:
-        st.info("🚀 Loading AI model (DistilGPT2)...")
-        # Using DistilGPT2 - much smaller but still effective
-        model_name = "distilgpt2"
-        
-        chatbot = pipeline(
-            "text-generation",
-            model=model_name,
-            tokenizer=model_name,
-            max_length=400,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
-            pad_token_id=50256  # GPT2 eos token
-        )
-        
-        st.success("✅ AI model loaded successfully!")
-        return chatbot
-    except Exception as e:
-        st.warning(f"⚠️ AI model not available: {str(e)}")
-        return None
+    """API-based AI fallback - no local model needed"""
+    return None
 
 def extract_personal_info(text):
     """Extract name and basic info from resume"""
@@ -86,7 +65,7 @@ def process_resume(pdf_file):
         st.session_state.user_name = personal_info['name']
         
         # Load AI model
-        st.session_state.chatbot = load_ai_model()
+        st.session_state.chatbot = None
         
         os.unlink(tmp_path)
         return True
