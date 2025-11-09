@@ -1,7 +1,12 @@
 streamlit==1.28.0
-PyPDF2==3.0.1
+langchain==0.0.354
 chromadb==0.4.15
+pypdf==3.17.0
 sentence-transformers==2.2.2
-openai==0.28.1
+ollama==0.1.7
 torch==2.0.1
-numpy==1.24.3
+accelerate==0.21.0
+transformers==4.31.0
+bitsandbytes==0.41.1
+faiss-cpu==1.7.4
+tiktoken==0.4.0
