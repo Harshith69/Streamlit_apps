@@ -3,8 +3,6 @@ import pypdf
 import tempfile
 import os
 import re
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-import torch
 
 def initialize_session_state():
     if 'resume_processed' not in st.session_state:
@@ -17,20 +15,29 @@ def initialize_session_state():
         st.session_state.user_name = ""
     if 'first_interaction' not in st.session_state:
         st.session_state.first_interaction = True
+    if 'model_loaded' not in st.session_state:
+        st.session_state.model_loaded = False
     if 'chatbot' not in st.session_state:
         st.session_state.chatbot = None
 
-@st.cache_resource
 def load_dialogpt_model():
-    """Load DialoGPT-large model"""
+    """Load DialoGPT-large only when needed"""
     try:
-        st.info("🚀 Loading DialoGPT-large model... This may take a minute.")
+        # Import inside function to avoid initial loading issues
+        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+        import torch
+        
+        st.info("🚀 Loading DialoGPT-large model...")
         model_name = "microsoft/DialoGPT-large"
         
+        # Load with specific settings for compatibility
         tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float32,  # Use float32 for compatibility
+            low_cpu_mem_usage=True
+        )
         
-        # Add padding token if it doesn't exist
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         
@@ -38,35 +45,41 @@ def load_dialogpt_model():
             "text-generation",
             model=model,
             tokenizer=tokenizer,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            max_length=1024,
+            max_length=512,  # Reduced for stability
             do_sample=True,
             temperature=0.7,
             top_p=0.9,
             pad_token_id=tokenizer.eos_token_id
         )
         
-        st.success("✅ DialoGPT-large loaded successfully!")
+        st.session_state.model_loaded = True
         return chatbot
+        
     except Exception as e:
-        st.error(f"❌ Failed to load DialoGPT: {str(e)}")
+        st.error(f"❌ Failed to load DialoGPT-large: {str(e)}")
+        st.info("Using enhanced rule-based system as fallback")
         return None
 
 def extract_personal_info(text):
     """Extract name and basic info from resume"""
-    name_pattern = r'^([A-Z][a-z]+ [A-Z][a-z]+)'
-    name_match = re.search(name_pattern, text)
-    name = name_match.group(1) if name_match else "the candidate"
+    name_patterns = [
+        r'^([A-Z][a-z]+ [A-Z][a-z]+)',
+        r'([A-Z][a-z]+ [A-Z][a-z]+)\s*\n',
+        r'Name[:]?\s*([A-Z][a-z]+ [A-Z][a-z]+)'
+    ]
+    
+    name = "the candidate"
+    for pattern in name_patterns:
+        match = re.search(pattern, text)
+        if match:
+            name = match.group(1)
+            break
     
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     email_match = re.search(email_pattern, text)
     email = email_match.group() if email_match else ""
     
-    return {
-        'name': name,
-        'email': email
-    }
+    return {'name': name, 'email': email}
 
 def process_resume(pdf_file):
     try:
@@ -88,14 +101,9 @@ def process_resume(pdf_file):
             raise ValueError("No readable text found in PDF")
         
         st.session_state.resume_text = text
-        
-        # Extract personal info
         personal_info = extract_personal_info(text)
         st.session_state.user_name = personal_info['name']
         st.session_state.personal_info = personal_info
-        
-        # Load AI model
-        st.session_state.chatbot = load_dialogpt_model()
         
         os.unlink(tmp_path)
         return True
@@ -106,20 +114,19 @@ def process_resume(pdf_file):
         raise e
 
 def get_conversation_history():
-    """Get formatted conversation history"""
+    """Get conversation context for AI"""
     if len(st.session_state.messages) == 0:
         return ""
     
     history = "Previous conversation:\n"
-    for msg in st.session_state.messages[-6:]:  # Last 3 exchanges
-        speaker = "Human" if msg["role"] == "user" else "AI"
+    for msg in st.session_state.messages[-4:]:
+        speaker = "Human" if msg["role"] == "user" else st.session_state.user_name
         history += f"{speaker}: {msg['content']}\n"
     return history
 
 def extract_relevant_context(question, resume_text):
-    """Extract relevant context from resume based on question"""
+    """Extract relevant resume content"""
     question_lower = question.lower()
-    
     sentences = re.split(r'[.!?]+', resume_text)
     scored_sentences = []
     
@@ -130,7 +137,6 @@ def extract_relevant_context(question, resume_text):
         sentence_lower = sentence.lower()
         score = 0
         
-        # Keyword matching
         question_words = set(question_lower.split())
         sentence_words = set(sentence_lower.split())
         common_words = question_words.intersection(sentence_words)
@@ -139,24 +145,25 @@ def extract_relevant_context(question, resume_text):
         if score > 0:
             scored_sentences.append((score, sentence.strip()))
     
-    # Get top relevant sentences
     scored_sentences.sort(reverse=True, key=lambda x: x[0])
     relevant_sentences = [sentence for score, sentence in scored_sentences[:5]]
     
-    return ". ".join(relevant_sentences) if relevant_sentences else "No specific information available about this topic."
+    return ". ".join(relevant_sentences) if relevant_sentences else "No specific information available."
 
-def generate_ai_response(question, resume_text):
+def generate_dialogpt_response(question, resume_text):
     """Generate response using DialoGPT-large"""
     try:
+        # Load model if not already loaded
         if st.session_state.chatbot is None:
-            return "AI model is not available. Please try again."
+            st.session_state.chatbot = load_dialogpt_model()
         
-        # Extract relevant context
+        if st.session_state.chatbot is None:
+            return None  # Fallback to rule-based
+        
         context = extract_relevant_context(question, resume_text)
         conversation_history = get_conversation_history()
         
-        # Build intelligent prompt for DialoGPT
-        prompt = f"""You are {st.session_state.user_name}, a professional candidate. Answer questions based on your resume and experience.
+        prompt = f"""You are {st.session_state.user_name}. Answer based on resume context.
 
 RESUME CONTEXT:
 {context}
@@ -167,11 +174,10 @@ Human: {question}
 
 {st.session_state.user_name}:"""
         
-        # Generate response using DialoGPT
-        with st.spinner('🤔 Thinking...'):
+        with st.spinner('🤔 Thinking with AI...'):
             responses = st.session_state.chatbot(
                 prompt,
-                max_new_tokens=300,
+                max_new_tokens=150,
                 do_sample=True,
                 temperature=0.7,
                 top_p=0.9,
@@ -179,32 +185,65 @@ Human: {question}
                 pad_token_id=st.session_state.chatbot.tokenizer.eos_token_id
             )
         
-        if responses and len(responses) > 0:
+        if responses:
             generated_text = responses[0]['generated_text']
-            # Extract only the AI's response (after the prompt)
             ai_response = generated_text.replace(prompt, "").strip()
-            
-            # Clean up the response
-            ai_response = re.split(r'[.!?]', ai_response)[0] + '.'  # Take first complete sentence
-            ai_response = ai_response.split('\n')[0]  # Take first line
-            
-            return ai_response if ai_response else "I'd be happy to discuss my experience. What would you like to know?"
-        
-        return "I'd be happy to discuss my experience. What would you like to know?"
+            # Clean response
+            ai_response = re.split(r'[.!?]', ai_response)[0] + '.'
+            return ai_response
         
     except Exception as e:
-        return f"I apologize, but I encountered an issue: {str(e)}. Please try asking again."
+        st.error(f"AI Error: {str(e)}")
+    
+    return None
 
-def get_welcome_message():
-    """Generate personalized welcome message"""
-    if st.session_state.first_interaction:
-        st.session_state.first_interaction = False
-        return f"Hello! I'm {st.session_state.user_name}. Thank you for taking the time to review my resume! I'm excited to discuss my experience, skills, and background. What would you like to know about my professional journey?"
+def generate_fallback_response(question, resume_text):
+    """Enhanced rule-based fallback"""
+    context = extract_relevant_context(question, resume_text)
+    
+    if "no specific information" in context.lower():
+        return f"I apologize, but I don't have specific information about '{question}' in my resume. I'd be happy to discuss my skills, experience, education, or projects instead."
+    
+    question_lower = question.lower()
+    
+    if any(word in question_lower for word in ['skill', 'technology', 'programming']):
+        return f"Based on my resume, here are my relevant skills:\n\n{context}\n\nI'm continuously learning and expanding my technical expertise."
+    
+    elif any(word in question_lower for word in ['experience', 'work', 'job']):
+        return f"Regarding my professional experience:\n\n{context}\n\nThis experience has helped me develop valuable insights and capabilities."
+    
+    elif any(word in question_lower for word in ['education', 'degree', 'university']):
+        return f"About my educational background:\n\n{context}\n\nMy education has provided a strong foundation for my career growth."
+    
+    elif any(word in question_lower for word in ['project', 'portfolio']):
+        return f"Here are some projects from my experience:\n\n{context}\n\nThese projects have been instrumental in developing my skills."
+    
+    elif any(word in question_lower for word in ['advice', 'suggest', 'improve']):
+        return f"Based on my journey, I'd suggest focusing on continuous learning and practical application. From my experience: {context}"
+    
+    else:
+        return f"Regarding your question:\n\n{context}\n\nIs there anything specific you'd like me to elaborate on?"
+
+def generate_response(question, resume_text):
+    """Try AI first, then fallback"""
+    # Try DialoGPT first
+    ai_response = generate_dialogpt_response(question, resume_text)
+    if ai_response:
+        return ai_response
+    
+    # Fallback to enhanced rule-based
+    return generate_fallback_response(question, resume_text)
+
+# Rest of your Streamlit UI code remains the same...
+# [Include all your existing UI code with the footer]
+
+st.set_page_config(page_title="AI Resume Assistant", page_icon="🤖", layout="wide")
+
+# [Include all your CSS and UI code from previous version]
+# [Include the main() function and footer from previous version]
 
 def main():
     initialize_session_state()
-    
-    st.set_page_config(page_title="AI Resume Assistant", page_icon="🤖", layout="wide")
     
     st.markdown("""
     <style>
@@ -261,7 +300,7 @@ def main():
     st.markdown('<div class="main-header">🤖 AI Resume Assistant</div>', unsafe_allow_html=True)
     
     if not st.session_state.resume_processed:
-        st.markdown("### Upload your resume and chat with an AI version of yourself!")
+        st.markdown("### Upload your resume and chat with DialoGPT-powered AI!")
         st.markdown('<div class="upload-container">', unsafe_allow_html=True)
         st.markdown("### 📄 Upload Your Resume (PDF only)")
         
@@ -271,10 +310,11 @@ def main():
             st.info(f"📁 File: {uploaded_file.name}")
             
             if st.button("🚀 Process Resume", type="primary"):
-                with st.spinner('Processing your resume and loading AI model...'):
+                with st.spinner('Processing your resume...'):
                     try:
                         if process_resume(uploaded_file):
                             st.session_state.resume_processed = True
+                            st.success("✅ Resume processed successfully!")
                             st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
@@ -282,34 +322,33 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
     
     else:
-        # Welcome banner
         st.markdown(f"""
         <div class="welcome-banner">
             <h3>👋 Hello! I'm {st.session_state.user_name}</h3>
-            <p>Powered by DialoGPT-large AI | I'm here to discuss my experience and background</p>
+            <p>Powered by DialoGPT-large AI | Ready to discuss my experience and background</p>
         </div>
         """, unsafe_allow_html=True)
         
         with st.sidebar:
             st.markdown("### 💡 Conversation Starters")
             examples = [
-                "Can you introduce yourself professionally?",
-                "What are your strongest technical skills?",
+                "Can you introduce yourself?",
+                "What are your technical skills?",
                 "Tell me about your work experience",
-                "What projects are you most proud of?",
-                "How do you approach problem-solving?",
-                "What are your career goals?",
-                "Can you give me career advice?"
+                "What projects have you worked on?",
+                "What's your educational background?",
+                "Can you give career advice?"
             ]
             
             for example in examples:
                 if st.button(example, use_container_width=True):
-                    if len(st.session_state.messages) == 0:
-                        welcome_msg = get_welcome_message()
+                    if len(st.session_state.messages) == 0 and st.session_state.first_interaction:
+                        welcome_msg = f"Hello! I'm {st.session_state.user_name}. Thank you for reviewing my resume! I'd be happy to discuss my experience, skills, and background. How can I assist you today?"
                         st.session_state.messages.append({"role": "assistant", "content": welcome_msg})
+                        st.session_state.first_interaction = False
                     
                     st.session_state.messages.append({"role": "user", "content": example})
-                    response = generate_ai_response(example, st.session_state.resume_text)
+                    response = generate_response(example, st.session_state.resume_text)
                     st.session_state.messages.append({"role": "assistant", "content": response})
                     st.rerun()
             
@@ -320,16 +359,16 @@ def main():
                 st.session_state.resume_text = ""
                 st.session_state.user_name = ""
                 st.session_state.first_interaction = True
+                st.session_state.model_loaded = False
                 st.session_state.chatbot = None
                 st.rerun()
         
-        # Display chat
         st.markdown("### 💬 Conversation")
         
-        # Show welcome message if first interaction
-        if len(st.session_state.messages) == 0:
-            welcome_msg = get_welcome_message()
+        if len(st.session_state.messages) == 0 and st.session_state.first_interaction:
+            welcome_msg = f"Hello! I'm {st.session_state.user_name}. Thank you for reviewing my resume! I'd be happy to discuss my experience, skills, and background. How can I assist you today?"
             st.session_state.messages.append({"role": "assistant", "content": welcome_msg})
+            st.session_state.first_interaction = False
         
         for message in st.session_state.messages:
             if message["role"] == "user":
@@ -347,10 +386,9 @@ def main():
                     unsafe_allow_html=True
                 )
         
-        # Chat input
         if user_question := st.chat_input(f"Ask {st.session_state.user_name}..."):
             st.session_state.messages.append({"role": "user", "content": user_question})
-            response = generate_ai_response(user_question, st.session_state.resume_text)
+            response = generate_response(user_question, st.session_state.resume_text)
             st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
 
