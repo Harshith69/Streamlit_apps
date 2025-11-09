@@ -3,5 +3,5 @@ pypdf==3.17.0
 transformers==4.35.0
 torch==2.1.2
 accelerate==0.24.0
-rich==13.7.0
-markdown-it-py==3.0.0
+tokenizers==0.15.0
+protobuf==3.20.3
