@@ -113,42 +113,57 @@ def extract_relevant_context(question, resume_text):
     return ". ".join(relevant_sentences) if relevant_sentences else "No specific information available."
 
 def generate_ai_response(question, resume_text):
-    """Generate response using AI model"""
+    """Generate response using API-based AI (currently using smart fallback)"""
     try:
-        if st.session_state.chatbot is None:
-            return None
-        
+        # For now, using enhanced smart response system
+        # You can later integrate with Hugging Face Inference API or other services
         context = extract_relevant_context(question, resume_text)
         conversation_history = get_conversation_history()
         
-        prompt = f"""You are {st.session_state.user_name}. Answer based on resume.
-
-Resume: {context}
-{conversation_history}
-Question: {question}
-Answer:"""
+        # Enhanced smart response based on question type and context
+        question_lower = question.lower()
         
-        with st.spinner('🤔 Thinking...'):
-            responses = st.session_state.chatbot(
-                prompt,
-                max_new_tokens=150,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                num_return_sequences=1
-            )
+        if "no specific information" in context.lower():
+            return f"I apologize, but I don't have specific information about '{question}' in my resume. I'd be happy to discuss my skills, work experience, education background, or projects I've worked on instead."
         
-        if responses:
-            generated_text = responses[0]['generated_text']
-            ai_response = generated_text.replace(prompt, "").strip()
-            # Clean response
-            ai_response = re.split(r'[.!?]', ai_response)[0] + '.'
-            return ai_response
+        # Career advice questions
+        if any(word in question_lower for word in ['advice', 'suggest', 'improve', 'how to', 'career']):
+            advice = ""
+            if any(word in question_lower for word in ['technical', 'coding', 'programming']):
+                advice = "For technical growth, I recommend working on real-world projects, contributing to open source, and staying updated with latest technologies through online courses and communities."
+            elif any(word in question_lower for word in ['soft skill', 'communication', 'teamwork']):
+                advice = "For soft skills, I suggest practicing public speaking, seeking mentorship, participating in team projects, and actively seeking feedback to improve."
+            else:
+                advice = "Based on my experience, continuous learning, networking, and taking on challenging projects are key for career growth."
+            
+            return f"Regarding your question about {question}:\n\n{context}\n\nCareer Advice: {advice}"
         
+        # Introduction/greeting
+        elif any(word in question_lower for word in ['hello', 'hi', 'hey', 'introduce', 'who are you']):
+            return f"Hello! I'm {st.session_state.user_name}. Thank you for your interest in my profile! {context}\n\nI'd be happy to discuss my experience in more detail. What would you like to know about my background?"
+        
+        # Skills questions
+        elif any(word in question_lower for word in ['skill', 'technology', 'programming', 'technical']):
+            return f"Based on my resume, here are my key technical skills and competencies:\n\n{context}\n\nI'm always expanding my skill set through continuous learning and practical application."
+        
+        # Experience questions
+        elif any(word in question_lower for word in ['experience', 'work', 'job', 'employment']):
+            return f"Regarding my professional experience:\n\n{context}\n\nThis experience has provided me with valuable insights and capabilities that I bring to every project."
+        
+        # Education questions
+        elif any(word in question_lower for word in ['education', 'degree', 'university', 'college']):
+            return f"About my educational background:\n\n{context}\n\nMy education has given me a strong foundation that I've built upon throughout my career."
+        
+        # Project questions
+        elif any(word in question_lower for word in ['project', 'portfolio', 'work on']):
+            return f"Here are some projects I've worked on:\n\n{context}\n\nThese projects have helped me develop both technical expertise and collaborative skills."
+        
+        # General questions
+        else:
+            return f"Regarding your question about {question}:\n\n{context}\n\nIs there anything specific about this you'd like me to elaborate on?"
+            
     except Exception as e:
-        st.error(f"AI Error: {str(e)}")
-    
-    return None
+        return f"I apologize, but I encountered an issue while processing your question. Please try asking about my skills, experience, education, or projects."
 
 def generate_smart_response(question, resume_text):
     """Smart rule-based response as fallback"""
