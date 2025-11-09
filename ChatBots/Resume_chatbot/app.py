@@ -3,17 +3,75 @@ import pypdf
 import tempfile
 import os
 import re
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
-# Page configuration
-st.set_page_config(
-    page_title="AI Resume Assistant 🤖",
-    page_icon="🤖",
-    layout="wide"
-)
+def initialize_session_state():
+    if 'resume_processed' not in st.session_state:
+        st.session_state.resume_processed = False
+    if 'resume_text' not in st.session_state:
+        st.session_state.resume_text = ""
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
 
-# Custom CSS for vibrant design
+def process_resume(pdf_file):
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            tmp_file.write(pdf_file.getvalue())
+            tmp_path = tmp_file.name
+        
+        with open(tmp_path, 'rb') as file:
+            reader = pypdf.PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        if not text:
+            raise ValueError("No readable text found in PDF")
+        
+        st.session_state.resume_text = text
+        os.unlink(tmp_path)
+        return True
+        
+    except Exception as e:
+        if 'tmp_path' in locals() and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise e
+
+def simple_search(question, text):
+    question_lower = question.lower()
+    text_lower = text.lower()
+    
+    # Simple keyword matching
+    question_words = set(question_lower.split())
+    text_words = set(text_lower.split())
+    
+    common_words = question_words.intersection(text_words)
+    
+    if common_words:
+        # Find sentences containing matching words
+        sentences = text.split('. ')
+        relevant_sentences = []
+        
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            if any(word in sentence_lower for word in common_words):
+                relevant_sentences.append(sentence)
+        
+        return ". ".join(relevant_sentences[:5]) + "."
+    else:
+        return "No specific information found about this topic in the resume."
+
+def generate_response(question, context):
+    if context and context != "No specific information found about this topic in the resume.":
+        return f"Based on my resume:\n\n{context}"
+    else:
+        return "I don't have specific information about that in my resume. Try asking about my skills, experience, education, or projects."
+
+st.set_page_config(page_title="AI Resume Assistant", page_icon="🤖", layout="wide")
+
 st.markdown("""
 <style>
 .main-header {
@@ -25,7 +83,6 @@ st.markdown("""
     margin-bottom: 1rem;
     font-weight: bold;
 }
-
 .upload-container {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     padding: 2rem;
@@ -34,292 +91,73 @@ st.markdown("""
     text-align: center;
     color: white;
 }
-
-.chat-container {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    padding: 1.5rem;
-    border-radius: 15px;
-    margin: 1rem 0;
-}
-
-.user-message {
-    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-    padding: 1rem;
-    border-radius: 12px;
-    margin: 0.5rem 0;
-    color: white;
-    border: 1px solid rgba(255,255,255,0.3);
-}
-
-.assistant-message {
-    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-    padding: 1rem;
-    border-radius: 12px;
-    margin: 0.5rem 0;
-    color: white;
-    border: 1px solid rgba(255,255,255,0.3);
-}
-
-.stButton button {
-    background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
-    color: white;
-    border: none;
-    padding: 0.5rem 1.5rem;
-    border-radius: 20px;
-    font-weight: bold;
-    margin: 0.5rem;
-}
-
-.sidebar-content {
-    background: rgba(255,255,255,0.1);
-    padding: 1rem;
-    border-radius: 10px;
-    margin: 0.5rem 0;
-}
 </style>
 """, unsafe_allow_html=True)
-
-def initialize_session_state():
-    """Initialize session state variables"""
-    if 'resume_processed' not in st.session_state:
-        st.session_state.resume_processed = False
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
-    if 'collection' not in st.session_state:
-        st.session_state.collection = None
-    if 'embedder' not in st.session_state:
-        st.session_state.embedder = None
-
-def clean_text(text):
-    """Clean and preprocess text"""
-    # Remove extra whitespace
-    text = re.sub(r'\s+', ' ', text)
-    # Remove special characters but keep basic punctuation
-    text = re.sub(r'[^\w\s.,!?;:]', '', text)
-    return text.strip()
-
-def process_resume(pdf_file):
-    """Process uploaded PDF resume without chromadb"""
-    try:
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            tmp_file.write(pdf_file.getvalue())
-            tmp_path = tmp_file.name
-        
-        # Read PDF
-        with open(tmp_path, 'rb') as file:
-            reader = pypdf.PdfReader(file)
-            text = ""
-            for page in reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-        
-        # Clean text
-        text = clean_text(text)
-        
-        if not text:
-            raise ValueError("No readable text found in PDF")
-        
-        # Split into chunks
-        sentences = text.split('. ')
-        chunks = []
-        current_chunk = ""
-        
-        for sentence in sentences:
-            if len(current_chunk + sentence) < 800:
-                current_chunk += sentence + ". "
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-                current_chunk = sentence + ". "
-        
-        if current_chunk:
-            chunks.append(current_chunk.strip())
-        
-        # Initialize embedder and create embeddings
-        embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        chunk_embeddings = embedder.encode(chunks)
-        
-        # Store in session state (no chromadb)
-        st.session_state.chunks = chunks
-        st.session_state.chunk_embeddings = chunk_embeddings
-        st.session_state.embedder = embedder
-        
-        # Clean up
-        os.unlink(tmp_path)
-        
-        return True
-        
-    except Exception as e:
-        if 'tmp_path' in locals() and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise e
-
-def get_similar_content(question, top_k=3):
-    """Find similar content using cosine similarity"""
-    try:
-        question_embedding = st.session_state.embedder.encode([question])
-        similarities = cosine_similarity(
-            question_embedding, 
-            st.session_state.chunk_embeddings
-        )[0]
-        
-        # Get top_k most similar chunks
-        top_indices = similarities.argsort()[-top_k:][::-1]
-        relevant_chunks = [st.session_state.chunks[i] for i in top_indices]
-        
-        return " ".join(relevant_chunks)
-        
-    except Exception as e:
-        return f"Error searching resume: {str(e)}"
-
-def generate_response(question, context):
-    """Generate response based on context"""
-    prompt = f"""
-    Based on the following resume information, answer the question.
-    
-    RESUME CONTEXT:
-    {context}
-    
-    QUESTION: {question}
-    
-    INSTRUCTIONS:
-    - Only use information from the resume context above
-    - If the information isn't in the resume, say "This information is not in my resume"
-    - Be concise and professional
-    - Format your response clearly
-    
-    ANSWER:
-    """
-    
-    # Simple response generation (you can enhance this later)
-    if len(context) > 50:  # If we have meaningful context
-        return f"Based on my resume:\n\n{context[:400]}..."
-    else:
-        return "I couldn't find relevant information about that in my resume. Please try asking about my skills, experience, education, or projects."
 
 def main():
     initialize_session_state()
     
-    # Header
     st.markdown('<div class="main-header">🤖 AI Resume Assistant</div>', unsafe_allow_html=True)
     st.markdown("### Upload your resume and chat with your AI assistant!")
     
-    # Sidebar
-    with st.sidebar:
-        st.markdown("### 💡 How to Use")
-        st.markdown("""
-        1. **Upload** your resume (PDF)
-        2. **Wait** for processing
-        3. **Ask questions** about your experience
-        
-        **Example questions:**
-        - What are my skills?
-        - Summarize my experience
-        - What projects have I done?
-        - Tell me about my education
-        """)
-        
-        if st.session_state.resume_processed:
-            if st.button("🔄 Upload New Resume", use_container_width=True):
-                st.session_state.resume_processed = False
-                st.session_state.messages = []
-                st.session_state.collection = None
-                st.session_state.embedder = None
-                st.rerun()
-    
-    # Main content
     if not st.session_state.resume_processed:
-        # Upload section
         st.markdown('<div class="upload-container">', unsafe_allow_html=True)
-        st.markdown("### 📄 Upload Your Resume")
+        st.markdown("### 📄 Upload Your Resume (PDF only)")
         
-        uploaded_file = st.file_uploader(
-            "Choose a PDF file",
-            type="pdf",
-            label_visibility="collapsed"
-        )
+        uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", label_visibility="collapsed")
         
         if uploaded_file is not None:
-            st.info(f"📁 File: {uploaded_file.name} | Size: {uploaded_file.size // 1024} KB")
+            st.info(f"📁 File: {uploaded_file.name}")
             
             if st.button("🚀 Process Resume", type="primary"):
-                with st.spinner('Processing your resume... This may take a moment.'):
+                with st.spinner('Processing your resume...'):
                     try:
-                        collection, embedder = process_resume(uploaded_file)
-                        st.session_state.collection = collection
-                        st.session_state.embedder = embedder
-                        st.session_state.resume_processed = True
-                        st.success("✅ Resume processed successfully!")
-                        st.rerun()
+                        if process_resume(uploaded_file):
+                            st.session_state.resume_processed = True
+                            st.success("✅ Resume processed successfully!")
+                            st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
-                        st.info("Please make sure you've uploaded a valid PDF file with readable text.")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
     else:
-        # Chat section
-        st.markdown("### 💬 Chat with Your Resume Assistant")
+        with st.sidebar:
+            st.markdown("### 💡 Example Questions")
+            examples = [
+                "What are my skills?",
+                "What is my work experience?",
+                "Tell me about my education",
+                "What projects have I done?"
+            ]
+            
+            for example in examples:
+                if st.button(example, use_container_width=True):
+                    st.session_state.messages.append({"role": "user", "content": example})
+                    context = simple_search(example, st.session_state.resume_text)
+                    response = generate_response(example, context)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    st.rerun()
+            
+            if st.button("🔄 Upload New Resume", use_container_width=True):
+                st.session_state.resume_processed = False
+                st.session_state.messages = []
+                st.session_state.resume_text = ""
+                st.rerun()
         
-        # Display chat messages
+        st.markdown("### 💬 Chat with Your Resume")
+        
         for message in st.session_state.messages:
             if message["role"] == "user":
-                st.markdown(f'<div class="user-message"><strong>You:</strong> {message["content"]}</div>', unsafe_allow_html=True)
+                st.markdown(f"**You:** {message['content']}")
             else:
-                st.markdown(f'<div class="assistant-message"><strong>Assistant:</strong> {message["content"]}</div>', unsafe_allow_html=True)
+                st.markdown(f"**Assistant:** {message['content']}")
         
-        # Quick question buttons
-        st.markdown("### 🎯 Quick Questions")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("What are my skills?", use_container_width=True):
-                question = "What are my technical skills and competencies?"
-                st.session_state.messages.append({"role": "user", "content": question})
-                context = get_similar_content(question)
-                response = generate_response(question, context)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.rerun()
-            
-            if st.button("Work experience", use_container_width=True):
-                question = "What is my work experience and employment history?"
-                st.session_state.messages.append({"role": "user", "content": question})
-                context = get_similar_content(question)
-                response = generate_response(question, context)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.rerun()
-        
-        with col2:
-            if st.button("Education background", use_container_width=True):
-                question = "What is my educational background and qualifications?"
-                st.session_state.messages.append({"role": "user", "content": question})
-                context = get_similar_content(question)
-                response = generate_response(question, context)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.rerun()
-            
-            if st.button("Projects", use_container_width=True):
-                question = "What projects have I worked on?"
-                st.session_state.messages.append({"role": "user", "content": question})
-                context = get_similar_content(question)
-                response = generate_response(question, context)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.rerun()
-        
-        # Chat input
-        st.markdown("### 💭 Ask Your Own Question")
-        if user_question := st.chat_input("Type your question here..."):
-            # Add user message
+        if user_question := st.chat_input("Ask about your resume..."):
             st.session_state.messages.append({"role": "user", "content": user_question})
-            
-            # Generate response
-            with st.spinner('Searching resume...'):
-                context = get_similar_content(user_question)
-                response = generate_response(user_question, context)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-            
+            context = simple_search(user_question, st.session_state.resume_text)
+            response = generate_response(user_question, context)
+            st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
 
 if __name__ == "__main__":
