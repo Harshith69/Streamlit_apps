@@ -10,6 +10,8 @@ def initialize_session_state():
         st.session_state.resume_processed = False
     if 'resume_text' not in st.session_state:
         st.session_state.resume_text = ""
+    if 'resume_chunks' not in st.session_state: 
+        st.session_state.resume_chunks = []  
     if 'messages' not in st.session_state:
         st.session_state.messages = []
     if 'user_name' not in st.session_state:
@@ -25,11 +27,14 @@ def load_ai_model():
     return None
 
 def extract_personal_info(text):
-    """Extract name and basic info from resume"""
+    """Better name extraction from resume"""
+    # Multiple patterns to catch name in different formats
     name_patterns = [
         r'^([A-Z][a-z]+ [A-Z][a-z]+)',
-        r'([A-Z][a-z]+ [A-Z][a-z]+)\s*\n',
-        r'Name[:]?\s*([A-Z][a-z]+ [A-Z][a-z]+)'
+        r'\n([A-Z][a-z]+ [A-Z][a-z]+)\s*\n',
+        r'Name[:]?\s*([A-Z][a-z]+ [A-Z][a-z]+)',
+        r'([A-Z][a-z]+ [A-Z][a-z]+)\s+[\w\.-]+@[\w\.-]+',  # Name followed by email
+        r'([A-Z][a-z]+ [A-Z][a-z]+)\s+\+?\d'  # Name followed by phone
     ]
     
     name = "the candidate"
@@ -38,6 +43,15 @@ def extract_personal_info(text):
         if match:
             name = match.group(1)
             break
+    
+    # If still not found, take first line that looks like a name
+    if name == "the candidate":
+        lines = text.split('\n')
+        for line in lines[:5]:  # Check first 5 lines
+            line = line.strip()
+            if re.match(r'^[A-Z][a-z]+ [A-Z][a-z]+$', line):
+                name = line
+                break
     
     return {'name': name}
 
@@ -74,6 +88,211 @@ def process_resume(pdf_file):
         if 'tmp_path' in locals() and os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise e
+
+def extract_text_with_sections(pdf_file):
+    """Better text extraction that preserves sections and structure"""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            tmp_file.write(pdf_file.getvalue())
+            tmp_path = tmp_file.name
+        
+        with open(tmp_path, 'rb') as file:
+            reader = pypdf.PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    # Add page separator to maintain structure
+                    text += f"--- PAGE {len(text.split('--- PAGE'))} ---\n"
+                    text += page_text + "\n\n"
+        
+        os.unlink(tmp_path)
+        return text
+    except Exception as e:
+        raise e
+
+def smart_text_chunking(text):
+    """Better chunking that preserves context and sections"""
+    # First, try to split by sections (common resume headings)
+    sections = {
+        'experience': [],
+        'education': [], 
+        'skills': [],
+        'projects': [],
+        'summary': [],
+        'other': []
+    }
+    
+    # Common resume section headers
+    section_headers = {
+        'experience': ['experience', 'work experience', 'employment', 'professional experience', 'work history'],
+        'education': ['education', 'academic', 'qualifications', 'degrees'],
+        'skills': ['skills', 'technical skills', 'competencies', 'technologies'],
+        'projects': ['projects', 'personal projects', 'portfolio', 'key projects'],
+        'summary': ['summary', 'objective', 'about', 'profile']
+    }
+    
+    lines = text.split('\n')
+    current_section = 'other'
+    
+    for line in lines:
+        line_lower = line.lower().strip()
+        
+        # Check if this line is a section header
+        for section, headers in section_headers.items():
+            if any(header in line_lower for header in headers) and len(line) < 100:
+                current_section = section
+                continue
+        
+        # Add content to appropriate section
+        if line.strip() and len(line.strip()) > 10:  # Meaningful content
+            sections[current_section].append(line.strip())
+    
+    # Create chunks from sections
+    chunks = []
+    
+    # Experience chunks
+    if sections['experience']:
+        exp_text = ' '.join(sections['experience'])
+        exp_chunks = [exp_text[i:i+800] for i in range(0, len(exp_text), 800)]
+        chunks.extend([f"WORK EXPERIENCE: {chunk}" for chunk in exp_chunks])
+    
+    # Education chunks
+    if sections['education']:
+        edu_text = ' '.join(sections['education'])
+        edu_chunks = [edu_text[i:i+600] for i in range(0, len(edu_text), 600)]
+        chunks.extend([f"EDUCATION: {chunk}" for chunk in edu_chunks])
+    
+    # Skills chunks
+    if sections['skills']:
+        skills_text = ' '.join(sections['skills'])
+        skills_chunks = [skills_text[i:i+500] for i in range(0, len(skills_text), 500)]
+        chunks.extend([f"SKILLS: {chunk}" for chunk in skills_chunks])
+    
+    # Projects chunks
+    if sections['projects']:
+        proj_text = ' '.join(sections['projects'])
+        proj_chunks = [proj_text[i:i+700] for i in range(0, len(proj_text), 700)]
+        chunks.extend([f"PROJECTS: {chunk}" for chunk in proj_chunks])
+    
+    # If no sections detected, fall back to sentence-based chunking
+    if not chunks:
+        sentences = re.split(r'[.!?]+', text)
+        current_chunk = ""
+        for sentence in sentences:
+            if len(current_chunk + sentence) < 800:
+                current_chunk += sentence + ". "
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = sentence + ". "
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+    
+    return chunks
+
+def process_resume(pdf_file):
+    try:
+        # Extract text with better structure
+        text = extract_text_with_sections(pdf_file)
+        
+        if not text.strip():
+            raise ValueError("No readable text found in PDF")
+        
+        # Clean text
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Smart chunking
+        chunks = smart_text_chunking(text)
+        
+        # Store both full text and chunks
+        st.session_state.resume_text = text
+        st.session_state.resume_chunks = chunks
+        
+        # Extract personal info
+        personal_info = extract_personal_info(text)
+        st.session_state.user_name = personal_info['name']
+        st.session_state.personal_info = personal_info
+        
+        st.success(f"✅ Resume processed! Found {len(chunks)} information sections")
+        return True
+        
+    except Exception as e:
+        raise e
+
+def extract_relevant_context(question, resume_text):
+    """Much better context extraction using both full text and chunks"""
+    try:
+        question_lower = question.lower()
+        
+        # Use both full text and chunks for better matching
+        all_text = resume_text
+        if hasattr(st.session_state, 'resume_chunks'):
+            all_text += " " + " ".join(st.session_state.resume_chunks)
+        
+        # Better keyword matching with section awareness
+        sections_to_search = []
+        
+        if any(word in question_lower for word in ['skill', 'technology', 'programming', 'technical']):
+            sections_to_search.extend(['SKILLS:', 'TECHNICAL:', 'COMPETENCIES:'])
+        
+        if any(word in question_lower for word in ['experience', 'work', 'job', 'employment']):
+            sections_to_search.extend(['EXPERIENCE:', 'WORK:', 'EMPLOYMENT:'])
+        
+        if any(word in question_lower for word in ['education', 'degree', 'university', 'college']):
+            sections_to_search.extend(['EDUCATION:', 'ACADEMIC:'])
+        
+        if any(word in question_lower for word in ['project', 'portfolio']):
+            sections_to_search.extend(['PROJECTS:', 'PORTFOLIO:'])
+        
+        # Search in relevant sections first
+        relevant_content = []
+        
+        # If we have chunks with sections, search there first
+        if hasattr(st.session_state, 'resume_chunks'):
+            for chunk in st.session_state.resume_chunks:
+                for section in sections_to_search:
+                    if section in chunk:
+                        relevant_content.append(chunk)
+                        break
+        
+        # If no section matches found, use keyword matching on full text
+        if not relevant_content:
+            sentences = re.split(r'[.!?]+', all_text)
+            scored_sentences = []
+            
+            for sentence in sentences:
+                if len(sentence.strip()) < 15:
+                    continue
+                    
+                sentence_lower = sentence.lower()
+                score = 0
+                
+                # Score based on keyword matches
+                question_words = set(question_lower.split())
+                sentence_words = set(sentence_lower.split())
+                common_words = question_words.intersection(sentence_words)
+                score += len(common_words) * 5
+                
+                # Bonus for section keywords
+                for section in sections_to_search:
+                    if section.lower() in sentence_lower:
+                        score += 10
+                
+                if score > 0:
+                    scored_sentences.append((score, sentence.strip()))
+            
+            scored_sentences.sort(reverse=True, key=lambda x: x[0])
+            relevant_content = [sentence for score, sentence in scored_sentences[:5]]
+        
+        # If still no content, return a helpful message
+        if not relevant_content:
+            return f"No specific information found about '{question}'. Please try asking about: skills, work experience, education, or projects."
+        
+        return ". ".join(relevant_content) if isinstance(relevant_content, list) else relevant_content
+        
+    except Exception as e:
+        return f"Error processing question: {str(e)}"
 
 def get_conversation_history():
     """Get conversation context"""
