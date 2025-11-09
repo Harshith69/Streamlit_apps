@@ -1,5 +1,7 @@
 streamlit==1.28.2
 pypdf==3.17.0
 transformers==4.35.0
-torch==2.0.1
+torch==2.1.2
 accelerate==0.24.0
+rich==13.7.0
+markdown-it-py==3.0.0
