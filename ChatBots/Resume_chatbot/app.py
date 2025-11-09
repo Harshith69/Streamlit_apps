@@ -3,6 +3,8 @@ import pypdf
 import tempfile
 import os
 import re
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
+import torch
 
 def initialize_session_state():
     if 'resume_processed' not in st.session_state:
@@ -15,49 +17,32 @@ def initialize_session_state():
         st.session_state.user_name = ""
     if 'first_interaction' not in st.session_state:
         st.session_state.first_interaction = True
-    if 'model_loaded' not in st.session_state:
-        st.session_state.model_loaded = False
     if 'chatbot' not in st.session_state:
         st.session_state.chatbot = None
 
-def load_dialogpt_model():
-    """Load DialoGPT-large only when needed"""
+@st.cache_resource
+def load_ai_model():
+    """Load a smaller but capable model that works on Streamlit Cloud"""
     try:
-        # Import inside function to avoid initial loading issues
-        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-        import torch
-        
-        st.info("🚀 Loading DialoGPT-large model...")
-        model_name = "microsoft/DialoGPT-large"
-        
-        # Load with specific settings for compatibility
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float32,  # Use float32 for compatibility
-            low_cpu_mem_usage=True
-        )
-        
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+        st.info("🚀 Loading AI model (DistilGPT2)...")
+        # Using DistilGPT2 - much smaller but still effective
+        model_name = "distilgpt2"
         
         chatbot = pipeline(
             "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_length=512,  # Reduced for stability
+            model=model_name,
+            tokenizer=model_name,
+            max_length=400,
             do_sample=True,
             temperature=0.7,
             top_p=0.9,
-            pad_token_id=tokenizer.eos_token_id
+            pad_token_id=50256  # GPT2 eos token
         )
         
-        st.session_state.model_loaded = True
+        st.success("✅ AI model loaded successfully!")
         return chatbot
-        
     except Exception as e:
-        st.error(f"❌ Failed to load DialoGPT-large: {str(e)}")
-        st.info("Using enhanced rule-based system as fallback")
+        st.warning(f"⚠️ AI model not available: {str(e)}")
         return None
 
 def extract_personal_info(text):
@@ -75,11 +60,7 @@ def extract_personal_info(text):
             name = match.group(1)
             break
     
-    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-    email_match = re.search(email_pattern, text)
-    email = email_match.group() if email_match else ""
-    
-    return {'name': name, 'email': email}
+    return {'name': name}
 
 def process_resume(pdf_file):
     try:
@@ -103,7 +84,9 @@ def process_resume(pdf_file):
         st.session_state.resume_text = text
         personal_info = extract_personal_info(text)
         st.session_state.user_name = personal_info['name']
-        st.session_state.personal_info = personal_info
+        
+        # Load AI model
+        st.session_state.chatbot = load_ai_model()
         
         os.unlink(tmp_path)
         return True
@@ -114,11 +97,11 @@ def process_resume(pdf_file):
         raise e
 
 def get_conversation_history():
-    """Get conversation context for AI"""
+    """Get conversation context"""
     if len(st.session_state.messages) == 0:
         return ""
     
-    history = "Previous conversation:\n"
+    history = "\nPrevious conversation:\n"
     for msg in st.session_state.messages[-4:]:
         speaker = "Human" if msg["role"] == "user" else st.session_state.user_name
         history += f"{speaker}: {msg['content']}\n"
@@ -146,43 +129,34 @@ def extract_relevant_context(question, resume_text):
             scored_sentences.append((score, sentence.strip()))
     
     scored_sentences.sort(reverse=True, key=lambda x: x[0])
-    relevant_sentences = [sentence for score, sentence in scored_sentences[:5]]
+    relevant_sentences = [sentence for score, sentence in scored_sentences[:4]]
     
     return ". ".join(relevant_sentences) if relevant_sentences else "No specific information available."
 
-def generate_dialogpt_response(question, resume_text):
-    """Generate response using DialoGPT-large"""
+def generate_ai_response(question, resume_text):
+    """Generate response using AI model"""
     try:
-        # Load model if not already loaded
         if st.session_state.chatbot is None:
-            st.session_state.chatbot = load_dialogpt_model()
-        
-        if st.session_state.chatbot is None:
-            return None  # Fallback to rule-based
+            return None
         
         context = extract_relevant_context(question, resume_text)
         conversation_history = get_conversation_history()
         
-        prompt = f"""You are {st.session_state.user_name}. Answer based on resume context.
+        prompt = f"""You are {st.session_state.user_name}. Answer based on resume.
 
-RESUME CONTEXT:
-{context}
-
+Resume: {context}
 {conversation_history}
-
-Human: {question}
-
-{st.session_state.user_name}:"""
+Question: {question}
+Answer:"""
         
-        with st.spinner('🤔 Thinking with AI...'):
+        with st.spinner('🤔 Thinking...'):
             responses = st.session_state.chatbot(
                 prompt,
                 max_new_tokens=150,
                 do_sample=True,
                 temperature=0.7,
                 top_p=0.9,
-                num_return_sequences=1,
-                pad_token_id=st.session_state.chatbot.tokenizer.eos_token_id
+                num_return_sequences=1
             )
         
         if responses:
@@ -197,110 +171,102 @@ Human: {question}
     
     return None
 
-def generate_fallback_response(question, resume_text):
-    """Enhanced rule-based fallback"""
+def generate_smart_response(question, resume_text):
+    """Smart rule-based response as fallback"""
     context = extract_relevant_context(question, resume_text)
     
     if "no specific information" in context.lower():
-        return f"I apologize, but I don't have specific information about '{question}' in my resume. I'd be happy to discuss my skills, experience, education, or projects instead."
+        return f"I don't have specific information about '{question}' in my resume. I'd be happy to discuss my skills, experience, education, or projects."
     
     question_lower = question.lower()
     
     if any(word in question_lower for word in ['skill', 'technology', 'programming']):
-        return f"Based on my resume, here are my relevant skills:\n\n{context}\n\nI'm continuously learning and expanding my technical expertise."
+        return f"Based on my resume, here are my relevant skills:\n\n{context}"
     
     elif any(word in question_lower for word in ['experience', 'work', 'job']):
-        return f"Regarding my professional experience:\n\n{context}\n\nThis experience has helped me develop valuable insights and capabilities."
+        return f"Regarding my professional experience:\n\n{context}"
     
     elif any(word in question_lower for word in ['education', 'degree', 'university']):
-        return f"About my educational background:\n\n{context}\n\nMy education has provided a strong foundation for my career growth."
+        return f"About my educational background:\n\n{context}"
     
     elif any(word in question_lower for word in ['project', 'portfolio']):
-        return f"Here are some projects from my experience:\n\n{context}\n\nThese projects have been instrumental in developing my skills."
+        return f"Here are some projects from my experience:\n\n{context}"
     
     elif any(word in question_lower for word in ['advice', 'suggest', 'improve']):
-        return f"Based on my journey, I'd suggest focusing on continuous learning and practical application. From my experience: {context}"
+        return f"Based on my journey: {context}\n\nI'd suggest continuous learning and practical application."
     
     else:
-        return f"Regarding your question:\n\n{context}\n\nIs there anything specific you'd like me to elaborate on?"
+        return f"Regarding your question:\n\n{context}"
 
 def generate_response(question, resume_text):
     """Try AI first, then fallback"""
-    # Try DialoGPT first
-    ai_response = generate_dialogpt_response(question, resume_text)
+    ai_response = generate_ai_response(question, resume_text)
     if ai_response:
         return ai_response
-    
-    # Fallback to enhanced rule-based
-    return generate_fallback_response(question, resume_text)
+    return generate_smart_response(question, resume_text)
 
-# Rest of your Streamlit UI code remains the same...
-# [Include all your existing UI code with the footer]
-
+# UI Code (same as before)
 st.set_page_config(page_title="AI Resume Assistant", page_icon="🤖", layout="wide")
 
-# [Include all your CSS and UI code from previous version]
-# [Include the main() function and footer from previous version]
+st.markdown("""
+<style>
+.main-header {
+    font-size: 3rem;
+    background: linear-gradient(45deg, #FF6B6B, #4ECDC4, #45B7D1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    margin-bottom: 1rem;
+    font-weight: bold;
+}
+.upload-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem;
+    border-radius: 15px;
+    margin: 1rem 0;
+    text-align: center;
+    color: white;
+}
+.chat-message {
+    padding: 1.2rem;
+    border-radius: 12px;
+    margin: 0.8rem 0;
+    border-left: 5px solid;
+}
+.user-message {
+    background: rgba(74, 144, 226, 0.15);
+    border-left-color: #4a90e2;
+    margin-left: 2rem;
+}
+.assistant-message {
+    background: rgba(46, 204, 113, 0.15);
+    border-left-color: #2ecc71;
+    margin-right: 2rem;
+}
+.footer {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 2rem;
+    border-radius: 15px;
+    margin-top: 2rem;
+}
+.welcome-banner {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem;
+    border-radius: 15px;
+    text-align: center;
+    color: white;
+    margin-bottom: 2rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
 def main():
     initialize_session_state()
     
-    st.markdown("""
-    <style>
-    .main-header {
-        font-size: 3rem;
-        background: linear-gradient(45deg, #FF6B6B, #4ECDC4, #45B7D1);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 1rem;
-        font-weight: bold;
-    }
-    .upload-container {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 15px;
-        margin: 1rem 0;
-        text-align: center;
-        color: white;
-    }
-    .chat-message {
-        padding: 1.2rem;
-        border-radius: 12px;
-        margin: 0.8rem 0;
-        border-left: 5px solid;
-    }
-    .user-message {
-        background: rgba(74, 144, 226, 0.15);
-        border-left-color: #4a90e2;
-        margin-left: 2rem;
-    }
-    .assistant-message {
-        background: rgba(46, 204, 113, 0.15);
-        border-left-color: #2ecc71;
-        margin-right: 2rem;
-    }
-    .footer {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        padding: 2rem;
-        border-radius: 15px;
-        margin-top: 2rem;
-    }
-    .welcome-banner {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 15px;
-        text-align: center;
-        color: white;
-        margin-bottom: 2rem;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
     st.markdown('<div class="main-header">🤖 AI Resume Assistant</div>', unsafe_allow_html=True)
     
     if not st.session_state.resume_processed:
-        st.markdown("### Upload your resume and chat with DialoGPT-powered AI!")
+        st.markdown("### Upload your resume and chat with AI!")
         st.markdown('<div class="upload-container">', unsafe_allow_html=True)
         st.markdown("### 📄 Upload Your Resume (PDF only)")
         
@@ -325,7 +291,7 @@ def main():
         st.markdown(f"""
         <div class="welcome-banner">
             <h3>👋 Hello! I'm {st.session_state.user_name}</h3>
-            <p>Powered by DialoGPT-large AI | Ready to discuss my experience and background</p>
+            <p>AI-Powered Resume Assistant | Ready to discuss my experience</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -359,7 +325,6 @@ def main():
                 st.session_state.resume_text = ""
                 st.session_state.user_name = ""
                 st.session_state.first_interaction = True
-                st.session_state.model_loaded = False
                 st.session_state.chatbot = None
                 st.rerun()
         
@@ -412,7 +377,7 @@ def main():
                     </a>
                 </p>
                 <p style='font-size: 1rem; color: rgba(255,255,255,0.8);'>
-                    Powered by DialoGPT-large & Streamlit | Intelligent Resume Assistant
+                    Powered by AI & Streamlit | Intelligent Resume Assistant
                 </p>
             </div>
         </div>
