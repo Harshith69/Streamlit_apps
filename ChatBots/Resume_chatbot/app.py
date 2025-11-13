@@ -3,63 +3,53 @@ import pypdf
 import tempfile
 import os
 import re
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.schema import Document
-from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
-from langchain.schema.output_parser import StrOutputParser
-from langchain.schema.runnable import RunnablePassthrough
-import chromadb
-from typing import List, Tuple
 import numpy as np
-import sys
+from sentence_transformers import SentenceTransformer
+import faiss
+from sklearn.metrics.pairwise import cosine_similarity
+import json
+import pickle
 
 def initialize_session_state():
     if 'resume_processed' not in st.session_state:
         st.session_state.resume_processed = False
     if 'resume_text' not in st.session_state:
         st.session_state.resume_text = ""
-    if 'vectorstore' not in st.session_state:
-        st.session_state.vectorstore = None
+    if 'resume_chunks' not in st.session_state:
+        st.session_state.resume_chunks = []
+    if 'embeddings' not in st.session_state:
+        st.session_state.embeddings = None
     if 'messages' not in st.session_state:
         st.session_state.messages = []
     if 'user_name' not in st.session_state:
         st.session_state.user_name = ""
     if 'first_interaction' not in st.session_state:
         st.session_state.first_interaction = True
+    if 'conversation_history' not in st.session_state:
+        st.session_state.conversation_history = []
     if 'embedding_model' not in st.session_state:
         st.session_state.embedding_model = None
-    if 'retriever' not in st.session_state:
-        st.session_state.retriever = None
-    if 'chat_memory' not in st.session_state:
-        st.session_state.chat_memory = None
+    if 'faiss_index' not in st.session_state:
+        st.session_state.faiss_index = None
 
 @st.cache_resource
 def load_embedding_model():
-    """Load Hugging Face embedding model with error handling"""
+    """Load lightweight embedding model"""
     try:
-        # Use a smaller, more compatible model
-        model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        embeddings = HuggingFaceEmbeddings(
-            model_name=model_name,
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': False}
-        )
-        return embeddings
+        # Use a very small, efficient model
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        return model
     except Exception as e:
         st.error(f"Error loading embedding model: {str(e)}")
-        # Fallback to simpler embeddings if needed
         return None
 
 def extract_personal_info(text):
-    """Better name extraction from resume"""
+    """Extract name from resume text"""
     name_patterns = [
         r'^([A-Z][a-z]+ [A-Z][a-z]+)',
         r'\n([A-Z][a-z]+ [A-Z][a-z]+)\s*\n',
         r'Name[:]?\s*([A-Z][a-z]+ [A-Z][a-z]+)',
         r'([A-Z][a-z]+ [A-Z][a-z]+)\s+[\w\.-]+@[\w\.-]+',
-        r'([A-Z][a-z]+ [A-Z][a-z]+)\s+\+?\d'
     ]
     
     name = "the candidate"
@@ -80,7 +70,7 @@ def extract_personal_info(text):
     return {'name': name}
 
 def extract_text_from_pdf(pdf_file):
-    """Extract text from PDF with error handling"""
+    """Extract text from PDF"""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
             tmp_file.write(pdf_file.getvalue())
@@ -89,11 +79,10 @@ def extract_text_from_pdf(pdf_file):
         with open(tmp_path, 'rb') as file:
             reader = pypdf.PdfReader(file)
             text = ""
-            for page_num, page in enumerate(reader.pages):
+            for page in reader.pages:
                 page_text = page.extract_text()
                 if page_text:
-                    text += f"--- PAGE {page_num + 1} ---\n"
-                    text += page_text + "\n\n"
+                    text += page_text + "\n"
         
         os.unlink(tmp_path)
         return text
@@ -102,103 +91,156 @@ def extract_text_from_pdf(pdf_file):
             os.unlink(tmp_path)
         raise e
 
-def create_text_chunks(text, chunk_size=500, chunk_overlap=50):
-    """Create text chunks for embedding with overlap"""
-    words = text.split()
-    chunks = []
+def create_smart_chunks(text, max_chunk_size=400):
+    """Create intelligent text chunks preserving context"""
+    # Split into paragraphs first
+    paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
     
-    for i in range(0, len(words), chunk_size - chunk_overlap):
-        chunk = ' '.join(words[i:i + chunk_size])
-        chunks.append(chunk)
+    chunks = []
+    current_chunk = ""
+    
+    for paragraph in paragraphs:
+        # If adding this paragraph exceeds chunk size, save current chunk
+        if len(current_chunk) + len(paragraph) > max_chunk_size and current_chunk:
+            chunks.append(current_chunk.strip())
+            current_chunk = paragraph
+        else:
+            if current_chunk:
+                current_chunk += " " + paragraph
+            else:
+                current_chunk = paragraph
+    
+    # Add the last chunk if it exists
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    # If chunks are too large, split by sentences
+    if not chunks or any(len(chunk) > max_chunk_size * 1.5 for chunk in chunks):
+        sentences = re.split(r'[.!?]+', text)
+        chunks = []
+        current_chunk = ""
         
-        if i + chunk_size >= len(words):
-            break
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            if len(current_chunk) + len(sentence) > max_chunk_size and current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = sentence
+            else:
+                if current_chunk:
+                    current_chunk += ". " + sentence + "."
+                else:
+                    current_chunk = sentence + "."
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
     
     return chunks
 
-def create_vectorstore(text, embeddings):
-    """Create ChromaDB vectorstore from resume text"""
+def create_embeddings(chunks, model):
+    """Create embeddings for text chunks"""
+    if not chunks or not model:
+        return None
+    
     try:
-        # Create chunks
-        chunks = create_text_chunks(text)
-        
-        # Create documents
-        documents = []
-        for i, chunk in enumerate(chunks):
-            doc = Document(
-                page_content=chunk,
-                metadata={"source": "resume", "chunk_id": i}
-            )
-            documents.append(doc)
-        
-        # Create vectorstore with persistence
-        vectorstore = Chroma.from_documents(
-            documents=documents,
-            embedding=embeddings,
-            persist_directory="./chroma_db"
-        )
-        
-        return vectorstore
+        embeddings = model.encode(chunks)
+        return embeddings
     except Exception as e:
-        st.error(f"Error creating vectorstore: {str(e)}")
+        st.error(f"Error creating embeddings: {str(e)}")
         return None
 
-def setup_retriever(vectorstore):
-    """Setup retriever with similarity search"""
+def create_faiss_index(embeddings):
+    """Create FAISS index for efficient similarity search"""
+    if embeddings is None:
+        return None
+    
     try:
-        retriever = vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": 3}
-        )
-        return retriever
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dimension)  # Inner product index for cosine similarity
+        
+        # Normalize embeddings for cosine similarity
+        faiss.normalize_L2(embeddings)
+        index.add(embeddings)
+        
+        return index
     except Exception as e:
-        st.error(f"Error setting up retriever: {str(e)}")
+        st.error(f"Error creating FAISS index: {str(e)}")
         return None
 
-def create_prompt_template():
-    """Create prompt template for the QA system"""
-    template = """You are an AI resume assistant representing {name}. Use the following context from the resume to answer the question. 
-If you don't know the answer based on the context, politely say so. Keep answers professional and relevant to the resume content.
-
-Context from resume: {context}
-
-Conversation history: {history}
-
-Question: {question}
-
-Please provide a helpful answer based on the resume context:"""
+def find_similar_chunks(question, model, index, chunks, top_k=3):
+    """Find most relevant chunks using FAISS"""
+    if index is None or not chunks:
+        return []
     
-    return PromptTemplate(
-        template=template,
-        input_variables=["context", "history", "question", "name"]
-    )
+    try:
+        # Encode question
+        question_embedding = model.encode([question])
+        faiss.normalize_L2(question_embedding)
+        
+        # Search
+        scores, indices = index.search(question_embedding, top_k)
+        
+        # Return relevant chunks
+        relevant_chunks = []
+        for i, idx in enumerate(indices[0]):
+            if idx < len(chunks):
+                relevant_chunks.append(chunks[idx])
+        
+        return relevant_chunks
+    except Exception as e:
+        st.error(f"Error in similarity search: {str(e)}")
+        return []
 
-def format_docs(docs):
-    """Format retrieved documents for context"""
-    return "\n\n".join([doc.page_content for doc in docs])
+def get_conversation_context():
+    """Get recent conversation history"""
+    if not st.session_state.conversation_history:
+        return ""
+    
+    context = "Recent conversation:\n"
+    for i, (question, answer) in enumerate(st.session_state.conversation_history[-3:]):
+        context += f"Q: {question}\nA: {answer}\n"
+    
+    return context
 
-def create_qa_chain(retriever, memory, user_name):
-    """Create the QA chain with memory and retrieval"""
-    prompt = create_prompt_template()
+def generate_smart_response(question, relevant_chunks):
+    """Generate response based on relevant chunks and conversation history"""
+    if not relevant_chunks:
+        return "I don't have specific information about that in my resume. Please ask about my skills, experience, education, or projects."
     
-    def get_history():
-        return memory.load_memory_variables({})["history"]
+    # Combine relevant chunks
+    context = "\n".join(relevant_chunks)
+    conversation_history = get_conversation_context()
     
-    chain = (
-        {
-            "context": retriever | format_docs,
-            "history": RunnablePassthrough() | (lambda x: get_history()),
-            "question": RunnablePassthrough() | (lambda x: x["question"]),
-            "name": RunnablePassthrough() | (lambda x: user_name)
-        }
-        | prompt
-        | StrOutputParser()
-    )
+    question_lower = question.lower()
     
-    return chain
+    # Enhanced response templates based on question type
+    if any(word in question_lower for word in ['hello', 'hi', 'hey', 'introduce']):
+        response = f"Hello! I'm {st.session_state.user_name}. {context[:200]}... I'd be happy to discuss my background in more detail. What would you like to know?"
+    
+    elif any(word in question_lower for word in ['skill', 'technology', 'programming']):
+        response = f"Based on my resume, here are my relevant skills:\n\n{context}\n\nI'm always learning and expanding my technical capabilities."
+    
+    elif any(word in question_lower for word in ['experience', 'work', 'job', 'role']):
+        response = f"Regarding my professional experience:\n\n{context}\n\nThis experience has helped me develop strong capabilities in my field."
+    
+    elif any(word in question_lower for word in ['education', 'degree', 'university', 'college']):
+        response = f"About my educational background:\n\n{context}\n\nMy education provides a solid foundation for my professional work."
+    
+    elif any(word in question_lower for word in ['project', 'portfolio']):
+        response = f"Here are some projects I've worked on:\n\n{context}\n\nThese projects demonstrate my practical skills and problem-solving abilities."
+    
+    elif any(word in question_lower for word in ['achievement', 'accomplishment']):
+        response = f"Some of my key achievements include:\n\n{context}\n\nI'm proud of these accomplishments and the value they've delivered."
+    
+    else:
+        response = f"Regarding your question:\n\n{context}\n\nIs there anything specific you'd like me to elaborate on?"
+    
+    return response
 
 def process_resume(pdf_file):
-    """Process resume and setup vectorstore"""
+    """Process resume with embeddings and FAISS"""
     try:
         # Extract text
         text = extract_text_from_pdf(pdf_file)
@@ -214,35 +256,30 @@ def process_resume(pdf_file):
         personal_info = extract_personal_info(text)
         st.session_state.user_name = personal_info['name']
         
+        # Create chunks
+        chunks = create_smart_chunks(text)
+        st.session_state.resume_chunks = chunks
+        
         # Load embedding model
         with st.spinner("Loading AI model..."):
-            embeddings = load_embedding_model()
-            if not embeddings:
+            model = load_embedding_model()
+            if not model:
                 raise Exception("Failed to load embedding model")
-            
-            st.session_state.embedding_model = embeddings
+            st.session_state.embedding_model = model
         
-        # Create vectorstore
+        # Create embeddings
         with st.spinner("Processing resume content..."):
-            vectorstore = create_vectorstore(text, embeddings)
-            if not vectorstore:
-                raise Exception("Failed to create vectorstore")
-            
-            st.session_state.vectorstore = vectorstore
+            embeddings = create_embeddings(chunks, model)
+            if embeddings is None:
+                raise Exception("Failed to create embeddings")
+            st.session_state.embeddings = embeddings
         
-        # Setup retriever
-        retriever = setup_retriever(vectorstore)
-        if not retriever:
-            raise Exception("Failed to setup retriever")
-        
-        st.session_state.retriever = retriever
-        
-        # Initialize memory
-        st.session_state.chat_memory = ConversationBufferMemory(
-            memory_key="history",
-            return_messages=True,
-            input_key="question"
-        )
+        # Create FAISS index
+        with st.spinner("Building search index..."):
+            faiss_index = create_faiss_index(embeddings)
+            if not faiss_index:
+                raise Exception("Failed to create search index")
+            st.session_state.faiss_index = faiss_index
         
         st.success(f"✅ Resume processed! Welcome {st.session_state.user_name}")
         return True
@@ -250,54 +287,36 @@ def process_resume(pdf_file):
     except Exception as e:
         raise e
 
-def generate_ai_response(question):
-    """Generate response using the QA chain"""
+def generate_response(question):
+    """Generate response using embeddings and FAISS"""
     try:
-        if not st.session_state.retriever or not st.session_state.chat_memory:
-            return "System not properly initialized. Please re-upload your resume."
+        if (not st.session_state.embedding_model or 
+            not st.session_state.faiss_index or 
+            not st.session_state.resume_chunks):
+            return "System not ready. Please re-upload your resume."
         
-        # Create QA chain
-        qa_chain = create_qa_chain(
-            st.session_state.retriever,
-            st.session_state.chat_memory,
-            st.session_state.user_name
+        # Find relevant chunks
+        relevant_chunks = find_similar_chunks(
+            question,
+            st.session_state.embedding_model,
+            st.session_state.faiss_index,
+            st.session_state.resume_chunks
         )
         
         # Generate response
-        response = qa_chain.invoke({"question": question})
+        response = generate_smart_response(question, relevant_chunks)
         
-        # Update memory
-        st.session_state.chat_memory.save_context(
-            {"question": question},
-            {"answer": response}
-        )
+        # Update conversation history
+        st.session_state.conversation_history.append((question, response))
+        
+        # Keep only last 10 conversations to manage memory
+        if len(st.session_state.conversation_history) > 10:
+            st.session_state.conversation_history = st.session_state.conversation_history[-10:]
         
         return response
         
     except Exception as e:
-        return f"I apologize, but I encountered an issue: {str(e)}. Please try rephrasing your question."
-
-def cleanup_chroma_db():
-    """Cleanup ChromaDB files"""
-    try:
-        if os.path.exists("./chroma_db"):
-            import shutil
-            shutil.rmtree("./chroma_db")
-    except Exception as e:
-        print(f"Cleanup warning: {str(e)}")
-
-def fallback_response(question, resume_text):
-    """Fallback response if AI system fails"""
-    question_lower = question.lower()
-    
-    if any(word in question_lower for word in ['hello', 'hi', 'hey']):
-        return f"Hello! I'm {st.session_state.user_name}. Thank you for your interest in my profile!"
-    elif any(word in question_lower for word in ['skill', 'technology']):
-        return "I have various technical skills mentioned in my resume. Could you be more specific about which technologies you're interested in?"
-    elif any(word in question_lower for word in ['experience', 'work']):
-        return "I have professional experience detailed in my resume. Would you like to know about my recent roles or specific industries?"
-    else:
-        return f"Thank you for your question about '{question}'. Based on my resume, I'd be happy to discuss my qualifications. Could you be more specific?"
+        return f"I apologize, but I encountered an issue. Please try again or rephrase your question."
 
 # UI Code
 st.set_page_config(page_title="AI Resume Assistant", page_icon="🤖", layout="wide")
@@ -305,8 +324,8 @@ st.set_page_config(page_title="AI Resume Assistant", page_icon="🤖", layout="w
 st.markdown("""
 <style>
 .main-header {
-    font-size: 3rem;
-    background: linear-gradient(45deg, #FF6B6B, #4ECDC4, #45B7D1);
+    font-size: 2.5rem;
+    background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-align: center;
@@ -322,34 +341,32 @@ st.markdown("""
     color: white;
 }
 .chat-message {
-    padding: 1.2rem;
-    border-radius: 12px;
-    margin: 0.8rem 0;
-    border-left: 5px solid;
+    padding: 1rem;
+    border-radius: 10px;
+    margin: 0.5rem 0;
+    border-left: 4px solid;
 }
 .user-message {
-    background: rgba(74, 144, 226, 0.15);
+    background: rgba(74, 144, 226, 0.1);
     border-left-color: #4a90e2;
-    margin-left: 2rem;
 }
 .assistant-message {
-    background: rgba(46, 204, 113, 0.15);
+    background: rgba(46, 204, 113, 0.1);
     border-left-color: #2ecc71;
-    margin-right: 2rem;
 }
 .footer {
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    padding: 2rem;
-    border-radius: 15px;
+    padding: 1.5rem;
+    border-radius: 10px;
     margin-top: 2rem;
 }
 .welcome-banner {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 2rem;
-    border-radius: 15px;
+    padding: 1.5rem;
+    border-radius: 10px;
     text-align: center;
     color: white;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -372,9 +389,6 @@ def main():
             if st.button("🚀 Process Resume", type="primary"):
                 with st.spinner('Processing your resume...'):
                     try:
-                        # Cleanup previous ChromaDB
-                        cleanup_chroma_db()
-                        
                         if process_resume(uploaded_file):
                             st.session_state.resume_processed = True
                             st.rerun()
@@ -388,7 +402,7 @@ def main():
         <div class="welcome-banner">
             <h3>👋 Hello! I'm {st.session_state.user_name}</h3>
             <p>AI-Powered Resume Assistant | Ready to discuss my experience</p>
-            <p><small>Powered by Hugging Face Embeddings & ChromaDB</small></p>
+            <p><small>Powered by Sentence Transformers & FAISS</small></p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -411,32 +425,28 @@ def main():
                         st.session_state.first_interaction = False
                     
                     st.session_state.messages.append({"role": "user", "content": example})
-                    try:
-                        response = generate_ai_response(example)
-                    except Exception:
-                        response = fallback_response(example, st.session_state.resume_text)
+                    response = generate_response(example)
                     st.session_state.messages.append({"role": "assistant", "content": response})
                     st.rerun()
             
             st.markdown("---")
             if st.button("🔄 Upload New Resume", use_container_width=True):
-                # Cleanup
-                cleanup_chroma_db()
-                
                 # Reset session state
                 st.session_state.resume_processed = False
                 st.session_state.messages = []
                 st.session_state.resume_text = ""
+                st.session_state.resume_chunks = []
                 st.session_state.user_name = ""
                 st.session_state.first_interaction = True
-                st.session_state.vectorstore = None
-                st.session_state.retriever = None
-                st.session_state.chat_memory = None
+                st.session_state.conversation_history = []
+                st.session_state.embedding_model = None
+                st.session_state.faiss_index = None
+                st.session_state.embeddings = None
                 st.rerun()
             
             st.markdown("---")
             st.markdown("### 🔧 System Info")
-            st.info("Using: Hugging Face Embeddings + ChromaDB + Conversation Memory")
+            st.info("Using: Sentence Transformers + FAISS + Smart Memory")
         
         st.markdown("### 💬 Conversation")
         
@@ -463,10 +473,7 @@ def main():
         
         if user_question := st.chat_input(f"Ask {st.session_state.user_name}..."):
             st.session_state.messages.append({"role": "user", "content": user_question})
-            try:
-                response = generate_ai_response(user_question)
-            except Exception:
-                response = fallback_response(user_question, st.session_state.resume_text)
+            response = generate_response(user_question)
             st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
 
@@ -476,21 +483,21 @@ def main():
         """
         <div class='footer'>
             <div style='text-align: center;'>
-                <h4 style='color: #E50914; margin-bottom: 1rem; font-size: 1.5rem;'>👨‍💻 Developed By</h4>
-                <p style='font-size: 1.4rem; font-weight: bold; color: #FFFFFF; margin-bottom: 0.5rem;'>
+                <h4 style='color: #E50914; margin-bottom: 1rem; font-size: 1.2rem;'>👨‍💻 Developed By</h4>
+                <p style='font-size: 1.1rem; font-weight: bold; color: #FFFFFF; margin-bottom: 0.5rem;'>
                     Harshith Narasimhamurthy
                 </p>
-                <p style='margin-bottom: 0.5rem; font-size: 1.1rem; color: #E6E6E6;'>
-                    📧 harshithnchandan@gmail.com | 📱 +919663918804
+                <p style='margin-bottom: 0.5rem; font-size: 0.9rem; color: #E6E6E6;'>
+                    📧 harshithnchandan@gmail.com
                 </p>
-                <p style='margin-bottom: 1rem; font-size: 1.1rem;'>
+                <p style='margin-bottom: 1rem; font-size: 0.9rem;'>
                     🔗 <a href='https://www.linkedin.com/in/harshithnarasimhamurthy69/' target='_blank' 
                        style='color: #E50914; text-decoration: none; font-weight: bold;'>
-                       Connect with me on LinkedIn
+                       LinkedIn
                     </a>
                 </p>
-                <p style='font-size: 1rem; color: rgba(255,255,255,0.8);'>
-                    Powered by Hugging Face + ChromaDB + Streamlit
+                <p style='font-size: 0.8rem; color: rgba(255,255,255,0.8);'>
+                    Lightweight AI Resume Assistant
                 </p>
             </div>
         </div>
