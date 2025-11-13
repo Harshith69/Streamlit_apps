@@ -6,15 +6,14 @@ import re
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.schema import Document
-from langchain.chains import RetrievalQA
 from langchain.memory import ConversationBufferMemory
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain.prompts import PromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
 import chromadb
 from typing import List, Tuple
 import numpy as np
+import sys
 
 def initialize_session_state():
     if 'resume_processed' not in st.session_state:
@@ -38,19 +37,19 @@ def initialize_session_state():
 
 @st.cache_resource
 def load_embedding_model():
-    """Load Hugging Face embedding model"""
+    """Load Hugging Face embedding model with error handling"""
     try:
+        # Use a smaller, more compatible model
         model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        model_kwargs = {'device': 'cpu'}
-        encode_kwargs = {'normalize_embeddings': False}
         embeddings = HuggingFaceEmbeddings(
             model_name=model_name,
-            model_kwargs=model_kwargs,
-            encode_kwargs=encode_kwargs
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': False}
         )
         return embeddings
     except Exception as e:
         st.error(f"Error loading embedding model: {str(e)}")
+        # Fallback to simpler embeddings if needed
         return None
 
 def extract_personal_info(text):
@@ -80,8 +79,8 @@ def extract_personal_info(text):
     
     return {'name': name}
 
-def extract_text_with_sections(pdf_file):
-    """Extract text from PDF with structure preservation"""
+def extract_text_from_pdf(pdf_file):
+    """Extract text from PDF with error handling"""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
             tmp_file.write(pdf_file.getvalue())
@@ -99,10 +98,12 @@ def extract_text_with_sections(pdf_file):
         os.unlink(tmp_path)
         return text
     except Exception as e:
+        if 'tmp_path' in locals() and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
         raise e
 
-def create_chunks(text, chunk_size=500, chunk_overlap=50):
-    """Create text chunks for embedding"""
+def create_text_chunks(text, chunk_size=500, chunk_overlap=50):
+    """Create text chunks for embedding with overlap"""
     words = text.split()
     chunks = []
     
@@ -119,7 +120,7 @@ def create_vectorstore(text, embeddings):
     """Create ChromaDB vectorstore from resume text"""
     try:
         # Create chunks
-        chunks = create_chunks(text)
+        chunks = create_text_chunks(text)
         
         # Create documents
         documents = []
@@ -130,7 +131,7 @@ def create_vectorstore(text, embeddings):
             )
             documents.append(doc)
         
-        # Create vectorstore
+        # Create vectorstore with persistence
         vectorstore = Chroma.from_documents(
             documents=documents,
             embedding=embeddings,
@@ -157,15 +158,15 @@ def setup_retriever(vectorstore):
 def create_prompt_template():
     """Create prompt template for the QA system"""
     template = """You are an AI resume assistant representing {name}. Use the following context from the resume to answer the question. 
-    If you don't know the answer based on the context, say so. Keep answers professional and relevant to the resume content.
+If you don't know the answer based on the context, politely say so. Keep answers professional and relevant to the resume content.
 
-Context: {context}
+Context from resume: {context}
 
-Conversation History: {history}
+Conversation history: {history}
 
 Question: {question}
 
-Answer:"""
+Please provide a helpful answer based on the resume context:"""
     
     return PromptTemplate(
         template=template,
@@ -200,7 +201,7 @@ def process_resume(pdf_file):
     """Process resume and setup vectorstore"""
     try:
         # Extract text
-        text = extract_text_with_sections(pdf_file)
+        text = extract_text_from_pdf(pdf_file)
         
         if not text.strip():
             raise ValueError("No readable text found in PDF")
@@ -239,7 +240,8 @@ def process_resume(pdf_file):
         # Initialize memory
         st.session_state.chat_memory = ConversationBufferMemory(
             memory_key="history",
-            return_messages=True
+            return_messages=True,
+            input_key="question"
         )
         
         st.success(f"✅ Resume processed! Welcome {st.session_state.user_name}")
@@ -266,8 +268,8 @@ def generate_ai_response(question):
         
         # Update memory
         st.session_state.chat_memory.save_context(
-            {"input": question},
-            {"output": response}
+            {"question": question},
+            {"answer": response}
         )
         
         return response
@@ -283,6 +285,19 @@ def cleanup_chroma_db():
             shutil.rmtree("./chroma_db")
     except Exception as e:
         print(f"Cleanup warning: {str(e)}")
+
+def fallback_response(question, resume_text):
+    """Fallback response if AI system fails"""
+    question_lower = question.lower()
+    
+    if any(word in question_lower for word in ['hello', 'hi', 'hey']):
+        return f"Hello! I'm {st.session_state.user_name}. Thank you for your interest in my profile!"
+    elif any(word in question_lower for word in ['skill', 'technology']):
+        return "I have various technical skills mentioned in my resume. Could you be more specific about which technologies you're interested in?"
+    elif any(word in question_lower for word in ['experience', 'work']):
+        return "I have professional experience detailed in my resume. Would you like to know about my recent roles or specific industries?"
+    else:
+        return f"Thank you for your question about '{question}'. Based on my resume, I'd be happy to discuss my qualifications. Could you be more specific?"
 
 # UI Code
 st.set_page_config(page_title="AI Resume Assistant", page_icon="🤖", layout="wide")
@@ -396,7 +411,10 @@ def main():
                         st.session_state.first_interaction = False
                     
                     st.session_state.messages.append({"role": "user", "content": example})
-                    response = generate_ai_response(example)
+                    try:
+                        response = generate_ai_response(example)
+                    except Exception:
+                        response = fallback_response(example, st.session_state.resume_text)
                     st.session_state.messages.append({"role": "assistant", "content": response})
                     st.rerun()
             
@@ -445,7 +463,10 @@ def main():
         
         if user_question := st.chat_input(f"Ask {st.session_state.user_name}..."):
             st.session_state.messages.append({"role": "user", "content": user_question})
-            response = generate_ai_response(user_question)
+            try:
+                response = generate_ai_response(user_question)
+            except Exception:
+                response = fallback_response(user_question, st.session_state.resume_text)
             st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
 
